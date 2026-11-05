@@ -9,11 +9,7 @@ let config = {};
 let state = null;
 let busy = false;
 let tab = "ALL";
-let page = "Dashboard";
-let adminData = null;
-
-const adminRoute =
-  location.pathname === "/admin";
+let refreshing = false;
 
 const esc = (value) =>
   String(value ?? "").replace(
@@ -36,16 +32,12 @@ const num = (value) =>
 const pct = (key) =>
   esc(config[key] ?? 10);
 
-function toast(text) {
-  $("#toast").textContent = text;
-  $("#toast").classList.add(
-    "visible",
-  );
+function toast(message) {
+  $("#toast").textContent = message;
+  $("#toast").classList.add("visible");
 
   setTimeout(() => {
-    $("#toast").classList.remove(
-      "visible",
-    );
+    $("#toast").classList.remove("visible");
   }, 4000);
 }
 
@@ -53,14 +45,11 @@ async function api(route, data) {
   const response = await fetch(
     "/api/" + route,
     {
-      method: data
-        ? "POST"
-        : "GET",
+      method: data ? "POST" : "GET",
 
       headers: data
         ? {
-            "Content-Type":
-              "application/json",
+            "Content-Type": "application/json",
           }
         : {},
 
@@ -70,65 +59,106 @@ async function api(route, data) {
     },
   );
 
-  const result =
-    await response.json();
+  const result = await response.json();
 
   if (!response.ok) {
-    throw new Error(
-      result.error,
-    );
+    if (
+      response.status === 401 &&
+      route !== "login" &&
+      route !== "signup"
+    ) {
+      me = null;
+      state = null;
+
+      if (modal.open) {
+        modal.close();
+      }
+
+      welcome();
+    }
+
+    throw new Error(result.error);
   }
 
   return result;
 }
 
-const logo = () => `
-  <div class="brand">
-    <img src="/plane.svg" alt="">
-    <div>
-      <small>SUPER FAST</small>
-      <strong>AVIATOR</strong>
-    </div>
-  </div>
-`;
+function logo() {
+  return `
+    <div class="brand">
+      <img src="/plane.svg" alt="">
 
-const bonuses = () => `
-  <div class="bonusrow">
-    ${[
-      [
-        "welcome",
-        "WELCOME<br>BONUS",
-      ],
-      [
-        "promo",
-        "PROMO CODE<br>BONUS",
-      ],
-      [
-        "losing",
-        "LOSING<br>BONUS",
-      ],
-    ]
-      .map(
-        ([key, title]) => `
-          <div class="bonus">
-            <b>${pct(key)}%</b>
-            <span>${title}</span>
-          </div>
-        `,
-      )
-      .join("")}
-  </div>
-`;
+      <div>
+        <small>SUPER FAST</small>
+        <strong>AVIATOR</strong>
+      </div>
+    </div>
+  `;
+}
+
+function bonuses() {
+  const items = [
+    [
+      "welcome",
+      "WELCOME<br>BONUS",
+    ],
+    [
+      "promo",
+      "PROMO CODE<br>BONUS",
+    ],
+    [
+      "losing",
+      "LOSING<br>BONUS",
+    ],
+  ];
+
+  return `
+    <div class="bonusrow">
+      ${items
+        .map(
+          ([key, title]) => `
+            <div class="bonus">
+              <b>${pct(key)}%</b>
+              <span>${title}</span>
+            </div>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function support() {
+  if (config.support) {
+    window.open(
+      config.support,
+      "_blank",
+      "noopener,noreferrer",
+    );
+  } else {
+    show(
+      "24/7 Customer Support",
+      `
+        <p>
+          The administrator has not
+          configured a support link yet.
+        </p>
+      `,
+    );
+  }
+}
 
 function show(title, html) {
   modal.innerHTML = `
     <div class="dialoghead">
       <h2>${esc(title)}</h2>
+
       <button
         data-close
         aria-label="Close dialog"
       >×</button>
     </div>
+
     ${html}
   `;
 
@@ -149,24 +179,6 @@ modal.addEventListener(
     }
   },
 );
-
-function support() {
-  if (config.support) {
-    window.open(
-      config.support,
-      "_blank",
-      "noopener,noreferrer",
-    );
-  } else {
-    show(
-      "24/7 Customer Support",
-      `<p>
-        The administrator has not
-        configured a support link yet.
-      </p>`,
-    );
-  }
-}
 
 function welcome() {
   app.innerHTML = `
@@ -189,8 +201,11 @@ function welcome() {
             src="/plane.svg"
             alt="Airplane"
           >
+
           <small>SUPER FAST</small>
+
           <h1>AVIATOR</h1>
+
           <i></i>
         </div>
 
@@ -199,9 +214,7 @@ function welcome() {
         <button
           class="support wine"
           data-support
-        >
-          24/7 CUSTOMER SUPPORT
-        </button>
+        >24/7 CUSTOMER SUPPORT</button>
 
         <p class="muted demofoot">
           Virtual demo coins only
@@ -211,38 +224,23 @@ function welcome() {
   `;
 }
 
-function adminLoginScreen() {
-  app.innerHTML = `
-    <div class="adminlogin">
-      ${logo()}
-      <h1>ADMIN PANEL</h1>
-      <button
-        class="green"
-        data-auth="login"
-      >ADMIN LOGIN</button>
-      <p>Virtual demo management</p>
-    </div>
-  `;
-}
-
 function auth(mode = "login") {
-  const title = adminRoute
-    ? "Admin Login"
-    : mode === "signup"
-      ? "Create Account"
-      : "Login";
+  const signup = mode === "signup";
 
   show(
-    title,
+    signup
+      ? "Create Customer Account"
+      : "Customer Login",
     `
       <form id="authform">
         <label>
-          Username
+          Customer ID
+
           <input
             name="username"
             autocomplete="username"
             required
-            pattern="[a-zA-Z0-9._-]{4,30}"
+            pattern="[a-zA-Z0-9._\\-]{4,30}"
             minlength="4"
             maxlength="30"
           >
@@ -250,41 +248,31 @@ function auth(mode = "login") {
 
         <label>
           Password
+
           <input
             name="password"
             type="password"
             autocomplete="${
-              mode === "signup"
+              signup
                 ? "new-password"
                 : "current-password"
             }"
-            minlength="${
-              adminRoute
-                ? 12
-                : 8
-            }"
+            minlength="8"
             maxlength="128"
             required
           >
         </label>
 
         <p class="muted">
-          ${
-            adminRoute
-              ? "Use the admin credentials configured on your server."
-              : "Username: 4–30 letters/numbers. Password: at least 8 characters."
-          }
+          Customer accounts only.
+          Admin uses a separate /admin link.
         </p>
 
         <button
           class="green full"
           type="submit"
         >
-          ${
-            mode === "signup"
-              ? "SIGN UP"
-              : "LOGIN"
-          }
+          ${signup ? "SIGN UP" : "LOGIN"}
         </button>
 
         <p
@@ -304,43 +292,156 @@ function auth(mode = "login") {
           "button",
         );
 
+      if (button.disabled) {
+        return;
+      }
+
       button.disabled = true;
 
       try {
         const data =
           Object.fromEntries(
-            new FormData(
-              event.target,
-            ),
+            new FormData(event.target),
           );
 
-        const result =
-          await api(
-            mode === "signup"
-              ? "signup"
-              : "login",
-            {
-              ...data,
-              admin: adminRoute,
-            },
-          );
+        const result = await api(
+          signup ? "signup" : "login",
+          data,
+        );
 
         me = result.user;
 
         modal.close();
 
-        if (adminRoute) {
-          await renderAdmin();
-        } else {
-          renderGame();
-          await refresh();
+        if (
+          me.mustChangePassword
+        ) {
+          changePassword(true);
+          return;
         }
-      } catch (error) {
-        const errorElement =
-          $("#formerror");
 
-        if (errorElement) {
-          errorElement.textContent =
+        renderGame();
+
+        await refresh();
+      } catch (error) {
+        if (
+          $("#formerror")
+        ) {
+          $("#formerror").textContent =
+            error.message;
+        }
+      } finally {
+        button.disabled = false;
+      }
+    };
+}
+
+function changePassword(
+  required = false,
+) {
+  show(
+    required
+      ? "Change Temporary Password"
+      : "Change Password",
+    `
+      <p>
+        ${
+          required
+            ? "Your admin-created ID requires a new password before using the game."
+            : "Changing your password ends existing customer sessions."
+        }
+      </p>
+
+      <form id="passwordform">
+        <label>
+          Current Password
+
+          <input
+            name="currentPassword"
+            type="password"
+            autocomplete="current-password"
+            required
+            maxlength="128"
+          >
+        </label>
+
+        <label>
+          New Password
+
+          <input
+            name="newPassword"
+            type="password"
+            autocomplete="new-password"
+            minlength="8"
+            maxlength="128"
+            required
+          >
+        </label>
+
+        <label>
+          Confirm New Password
+
+          <input
+            name="confirmPassword"
+            type="password"
+            autocomplete="new-password"
+            minlength="8"
+            maxlength="128"
+            required
+          >
+        </label>
+
+        <button
+          type="submit"
+          class="green full"
+        >SAVE PASSWORD</button>
+
+        <p
+          class="error"
+          id="formerror"
+        ></p>
+      </form>
+    `,
+  );
+
+  $("#passwordform").onsubmit =
+    async (event) => {
+      event.preventDefault();
+
+      const button =
+        event.target.querySelector(
+          "button",
+        );
+
+      if (button.disabled) {
+        return;
+      }
+
+      button.disabled = true;
+
+      try {
+        await api(
+          "password",
+          Object.fromEntries(
+            new FormData(event.target),
+          ),
+        );
+
+        me = null;
+        state = null;
+
+        modal.close();
+
+        welcome();
+
+        toast(
+          "Password changed. Log in with the new password.",
+        );
+      } catch (error) {
+        if (
+          $("#formerror")
+        ) {
+          $("#formerror").textContent =
             error.message;
         }
       } finally {
@@ -460,6 +561,11 @@ function renderGame() {
       </header>
 
       <div
+        id="demomode"
+        class="modebanner"
+      >Demo mode</div>
+
+      <div
         id="history"
         class="history"
       ></div>
@@ -490,11 +596,14 @@ function renderGame() {
 
           <b id="mult">1.00x</b>
 
-          <small id="roundid"></small>
+          <small
+            id="roundid"
+          ></small>
         </div>
       </section>
 
       ${panel(1)}
+
       ${panel(2)}
 
       <div class="betstabs">
@@ -510,8 +619,13 @@ function renderGame() {
 
       <div class="tablewrap">
         <table>
-          <thead id="bethead"></thead>
-          <tbody id="betrows"></tbody>
+          <thead
+            id="bethead"
+          ></thead>
+
+          <tbody
+            id="betrows"
+          ></tbody>
         </table>
       </div>
 
@@ -523,6 +637,10 @@ function renderGame() {
         <button
           data-account
         >History</button>
+
+        <button
+          data-password
+        >Password</button>
 
         <button
           data-logout
@@ -553,18 +671,33 @@ function renderGame() {
 async function refresh() {
   if (
     !me ||
-    adminRoute ||
-    busy
+    busy ||
+    refreshing ||
+    !$("#balance")
   ) {
     return;
   }
 
-  try {
-    state = await api(
-      "state",
-    );
+  refreshing = true;
 
+  try {
+    const snapshot =
+      await api("state");
+
+    if (
+      !me ||
+      !$("#balance")
+    ) {
+      return;
+    }
+
+    state = snapshot;
     me = state.user;
+
+    $("#demomode").textContent =
+      state.round.mode === "ADMIN"
+        ? "ADMIN-CONTROLLED DEMO · Fixed before betting"
+        : "RANDOM DEMO · Server-generated outcome";
 
     $("#balance").textContent =
       num(me.balance);
@@ -579,8 +712,17 @@ async function refresh() {
                   ? "wine"
                   : "green"
               }"
+              title="${
+                item.mode === "ADMIN"
+                  ? "Admin-Controlled Demo"
+                  : "Random Demo"
+              }"
             >
-              ${item.mult.toFixed(2)}x
+              ${item.mult.toFixed(2)}x${
+                item.mode === "ADMIN"
+                  ? " · A"
+                  : ""
+              }
             </span>
           `,
         )
@@ -591,45 +733,36 @@ async function refresh() {
       state.round;
 
     $("#phase").textContent =
-      current.phase ===
-      "WAITING"
+      current.phase === "WAITING"
         ? `NEXT ROUND IN ${current.countdown}s`
-        : current.phase ===
-            "FLYING"
+        : current.phase === "FLYING"
           ? "FLYING"
           : "FLEW AWAY";
 
     $("#mult").textContent =
-      current.phase ===
-      "WAITING"
+      current.phase === "WAITING"
         ? "GET READY"
-        : current.mult.toFixed(
-            2,
-          ) + "x";
+        : current.mult.toFixed(2) +
+          "x";
 
     $("#mult").classList.toggle(
       "crashed",
-      current.phase ===
-        "CRASHED",
+      current.phase === "CRASHED",
     );
 
     $("#roundid").textContent =
-      "ROUND #" +
-      current.id;
+      "ROUND #" + current.id;
 
     $("#flyingplane").className =
-      current.phase ===
-      "FLYING"
+      current.phase === "FLYING"
         ? "flying"
-        : current.phase ===
-            "CRASHED"
+        : current.phase === "CRASHED"
           ? "gone"
           : "";
 
-    for (const number of [
-      1,
-      2,
-    ]) {
+    for (
+      const number of [1, 2]
+    ) {
       const bet =
         state.bets.find(
           (item) =>
@@ -668,13 +801,12 @@ async function refresh() {
 
       if (
         bet &&
-        bet.status ===
-          "ACTIVE" &&
-        current.phase ===
-          "FLYING"
+        bet.status === "ACTIVE" &&
+        current.phase === "FLYING"
       ) {
         button.innerHTML = `
           CASH OUT
+
           <small>
             ${num(
               Math.floor(
@@ -682,30 +814,26 @@ async function refresh() {
                   current.mult,
               ),
             )}
+
             DEMO COINS
           </small>
         `;
       } else if (bet) {
         button.innerHTML = `
           ${
-            bet.status ===
-            "ACTIVE"
+            bet.status === "ACTIVE"
               ? "BET PLACED"
-              : esc(
-                  bet.status,
-                )
+              : bet.status
           }
+
           <small>
-            ${num(
-              bet.stake,
-            )}
+            ${num(bet.stake)}
             DEMO COINS
           </small>
         `;
       } else {
         button.innerHTML =
-          current.phase ===
-          "WAITING"
+          current.phase === "WAITING"
             ? "BET<small>DEMO COINS</small>"
             : "NEXT ROUND";
       }
@@ -713,7 +841,9 @@ async function refresh() {
 
     renderBets();
   } catch {
-    if ($("#phase")) {
+    if (
+      $("#phase")
+    ) {
       $("#phase").textContent =
         "CONNECTION LOST · RETRYING";
     }
@@ -726,6 +856,8 @@ async function refresh() {
     ) {
       button.disabled = true;
     }
+  } finally {
+    refreshing = false;
   }
 }
 
@@ -771,16 +903,13 @@ function renderBets() {
             </td>
 
             <td>
-              ${num(
-                item.stake,
-              )}
+              ${num(item.stake)}
             </td>
 
             <td>
               <span class="pill">
-                ${esc(
-                  item.status,
-                )}
+                ${esc(item.status)}
+
                 ${
                   item.payout
                     ? " · " +
@@ -805,20 +934,137 @@ function renderBets() {
     `;
 }
 
+async function readImage(file) {
+  if (!file?.size) {
+    return null;
+  }
+
+  if (
+    file.size > 1500000
+  ) {
+    throw new Error(
+      "Proof image must be under 1.5 MB.",
+    );
+  }
+
+  return new Promise(
+    (resolve, reject) => {
+      const reader =
+        new FileReader();
+
+      reader.onload = () =>
+        resolve(
+          reader.result,
+        );
+
+      reader.onerror = () =>
+        reject(
+          new Error(
+            "Unable to read image",
+          ),
+        );
+
+      reader.readAsDataURL(
+        file,
+      );
+    },
+  );
+}
+
 async function request(type) {
+  config =
+    await api(
+      "public",
+    );
+
+  const deposit =
+    type ===
+    "DEPOSIT";
+
+  const bankFields = [
+    [
+      "Account Holder",
+      config.bankHolder,
+    ],
+    [
+      "Bank",
+      config.bankName,
+    ],
+    [
+      "Account Number",
+      config.bankAccount,
+    ],
+    [
+      "IFSC",
+      config.bankIfsc,
+    ],
+    [
+      "UPI ID",
+      config.upiId,
+    ],
+  ];
+
+  const payment = `
+    <div class="bankdetails">
+      <h3>
+        Admin Deposit Details
+      </h3>
+
+      ${bankFields
+        .filter(
+          ([, value]) =>
+            value,
+        )
+        .map(
+          ([label, value]) => `
+            <p>
+              <b>${label}:</b>
+              ${esc(value)}
+            </p>
+          `,
+        )
+        .join("")}
+
+      ${
+        config.qrImageId
+          ? `
+            <img
+              class="qrpreview"
+              src="/api/media/${esc(
+                config.qrImageId,
+              )}"
+              alt="Admin deposit QR"
+            >
+          `
+          : ""
+      }
+
+      <p>
+        ${esc(
+          config.depositInstructions ||
+            "Contact support if deposit details have not been configured.",
+        )}
+      </p>
+    </div>
+  `;
+
   show(
-    type === "DEPOSIT"
+    deposit
       ? "Demo Deposit Request"
       : "Demo Withdrawal Request",
     `
       <p>
         Virtual demo coins only.
-        Admin approval required.
+        This screen records demo requests;
+        it does not send money or verify
+        bank payments.
       </p>
+
+      ${deposit ? payment : ""}
 
       <form id="reqform">
         <label>
-          Demo coins (100–25,000)
+          Demo Coins (100–25,000)
 
           <input
             name="amount"
@@ -826,25 +1072,109 @@ async function request(type) {
             min="100"
             max="25000"
             step="1"
-            required
             value="100"
+            required
           >
         </label>
 
+        ${
+          deposit
+            ? `
+              <label>
+                Demo UTR / Reference
+
+                <input
+                  name="utr"
+                  maxlength="100"
+                  required
+                >
+              </label>
+
+              <label>
+                Proof Image
+                (optional, max 1.5 MB)
+
+                <input
+                  name="proofFile"
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                >
+              </label>
+            `
+            : `
+              <label>
+                Account Holder
+
+                <input
+                  name="holder"
+                  maxlength="120"
+                  required
+                >
+              </label>
+
+              <label>
+                Bank Name
+
+                <input
+                  name="bank"
+                  maxlength="120"
+                  required
+                >
+              </label>
+
+              <label>
+                Account Number
+
+                <input
+                  name="account"
+                  inputmode="numeric"
+                  pattern="[0-9]{6,22}"
+                  required
+                >
+              </label>
+
+              <label>
+                Confirm Account Number
+
+                <input
+                  name="confirmAccount"
+                  inputmode="numeric"
+                  pattern="[0-9]{6,22}"
+                  required
+                >
+              </label>
+
+              <label>
+                IFSC
+
+                <input
+                  name="ifsc"
+                  maxlength="11"
+                  required
+                >
+              </label>
+
+              <p class="muted">
+                Demo coins will be held on
+                submission. Rejection restores
+                the held coins.
+              </p>
+            `
+        }
+
         <label>
-          Demo reference / note
+          Note (optional)
 
           <input
             name="note"
             maxlength="300"
-            required
-            placeholder="Demo request reference"
           >
         </label>
 
-        <button class="green full">
-          SUBMIT REQUEST
-        </button>
+        <button
+          type="submit"
+          class="green full"
+        >SUBMIT REQUEST</button>
 
         <p
           class="error"
@@ -863,85 +1193,140 @@ async function request(type) {
           "button",
         );
 
-      button.disabled = true;
+      if (
+        button.disabled
+      ) {
+        return;
+      }
+
+      button.disabled =
+        true;
 
       try {
-        const data =
+        const formData =
           Object.fromEntries(
             new FormData(
               event.target,
             ),
           );
 
-        await api(
-          "request",
-          {
-            type,
-            amount: Number(
-              data.amount,
-            ),
-            note: data.note,
-          },
-        );
+        const proof =
+          deposit
+            ? await readImage(
+                event.target.querySelector(
+                  "[name=proofFile]",
+                ).files[0],
+              )
+            : null;
+
+        const result =
+          await api(
+            "request",
+            {
+              type,
+
+              amount:
+                Number(
+                  formData.amount,
+                ),
+
+              note:
+                formData.note,
+
+              utr:
+                formData.utr,
+
+              proof,
+
+              holder:
+                formData.holder,
+
+              bank:
+                formData.bank,
+
+              account:
+                formData.account,
+
+              confirmAccount:
+                formData.confirmAccount,
+
+              ifsc:
+                formData.ifsc,
+            },
+          );
 
         modal.close();
 
         toast(
-          "Demo request submitted",
+          "Request #" +
+            result.id +
+            " sent to admin — PENDING",
         );
 
         await refresh();
       } catch (error) {
-        $("#formerror").textContent =
-          error.message;
+        if (
+          $("#formerror")
+        ) {
+          $("#formerror").textContent =
+            error.message;
+        }
       } finally {
-        button.disabled = false;
+        button.disabled =
+          false;
       }
     };
 }
 
 function info(kind) {
-  if (kind === "rules") {
+  if (
+    kind === "rules"
+  ) {
     show(
       "Rules",
-      `<p class="rules">
-        ${esc(config.rules)}
-      </p>`,
+      `
+        <p class="rules">
+          ${esc(config.rules)}
+        </p>
+      `,
     );
   }
 
-  if (kind === "bonus") {
+  if (
+    kind === "bonus"
+  ) {
     show(
       "Bonus Information",
       `
         ${bonuses()}
 
         <p>
-          Welcome: ${pct(
-            "welcome",
-          )}% on the first
-          approved demo deposit.
+          Welcome:
+          ${pct("welcome")}%
+          on the first approved
+          demo deposit.
         </p>
 
         <p>
-          Promo: ${pct(
-            "promo",
-          )}% of the first
-          approved demo deposit,
+          Promo:
+          ${pct("promo")}%
+          of the first approved
+          demo deposit,
           once per code.
         </p>
 
         <p>
-          Losing: ${pct(
-            "losing",
-          )}% of each lost
-          demo stake.
+          Losing:
+          ${pct("losing")}%
+          of each lost demo stake.
         </p>
       `,
     );
   }
 
-  if (kind === "promo") {
+  if (
+    kind === "promo"
+  ) {
     show(
       "Promo Code",
       `
@@ -956,9 +1341,9 @@ function info(kind) {
             >
           </label>
 
-          <button class="green full">
-            APPLY CODE
-          </button>
+          <button
+            class="green full"
+          >APPLY CODE</button>
 
           <p
             class="error"
@@ -977,7 +1362,8 @@ function info(kind) {
             "button",
           );
 
-        button.disabled = true;
+        button.disabled =
+          true;
 
         try {
           await api(
@@ -986,7 +1372,9 @@ function info(kind) {
               code:
                 new FormData(
                   event.target,
-                ).get("code"),
+                ).get(
+                  "code",
+                ),
             },
           );
 
@@ -1001,7 +1389,8 @@ function info(kind) {
           $("#formerror").textContent =
             error.message;
         } finally {
-          button.disabled = false;
+          button.disabled =
+            false;
         }
       };
   }
@@ -1047,12 +1436,41 @@ async function account() {
                       ${esc(
                         item.status,
                       )}
+
+                      <small>
+                        ${esc(
+                          item.admin_note ||
+                            "",
+                        )}
+                      </small>
+
+                      ${
+                        item.proof_id
+                          ? `
+                            <a
+                              href="/api/media/${esc(
+                                item.proof_id,
+                              )}"
+                              target="_blank"
+                              rel="noopener"
+                            >
+                              View proof
+                            </a>
+                          `
+                          : ""
+                      }
                     </td>
                   </tr>
                 `,
               )
               .join("") ||
-            "<tr><td>No requests yet</td></tr>"
+            `
+              <tr>
+                <td>
+                  No requests yet
+                </td>
+              </tr>
+            `
           }
         </table>
       </div>
@@ -1099,660 +1517,18 @@ async function account() {
                 `,
               )
               .join("") ||
-            "<tr><td>No transactions yet</td></tr>"
+            `
+              <tr>
+                <td>
+                  No transactions yet
+                </td>
+              </tr>
+            `
           }
         </table>
       </div>
     `,
   );
-}
-
-const sections = [
-  "Dashboard",
-  "Customers",
-  "Demo Coins",
-  "Deposit Requests",
-  "Withdrawal Requests",
-  "Bonus Settings",
-  "Promo Codes",
-  "Game History",
-  "Rules",
-  "Support Settings",
-];
-
-const requestTable = (
-  rows,
-) => `
-  <div class="tablewrap">
-    <table>
-      <thead>
-        <tr>
-          <th>Customer</th>
-          <th>Demo Coins</th>
-          <th>Type / Note</th>
-          <th>Status</th>
-          <th>Action</th>
-        </tr>
-      </thead>
-
-      <tbody>
-        ${
-          rows
-            .map(
-              (item) => `
-                <tr>
-                  <td>
-                    ${esc(
-                      item.username,
-                    )}
-                  </td>
-
-                  <td>
-                    ${num(
-                      item.amount,
-                    )}
-                  </td>
-
-                  <td>
-                    ${esc(
-                      item.type,
-                    )}
-
-                    <small>
-                      ${esc(
-                        item.note,
-                      )}
-                    </small>
-                  </td>
-
-                  <td>
-                    <span class="pill">
-                      ${esc(
-                        item.status,
-                      )}
-                    </span>
-                  </td>
-
-                  <td>
-                    ${
-                      item.status ===
-                      "PENDING"
-                        ? `
-                          <button
-                            class="green mini"
-                            data-review="${item.id},SUCCESS"
-                          >Approve</button>
-
-                          <button
-                            class="wine mini"
-                            data-review="${item.id},REJECTED"
-                          >Reject</button>
-                        `
-                        : "Completed"
-                    }
-                  </td>
-                </tr>
-              `,
-            )
-            .join("") ||
-          `
-            <tr>
-              <td colspan="5">
-                No requests yet
-              </td>
-            </tr>
-          `
-        }
-      </tbody>
-    </table>
-  </div>
-`;
-
-function roundsTable() {
-  return `
-    <div class="tablewrap">
-      <table>
-        <tr>
-          <th>Round ID</th>
-          <th>Multiplier</th>
-          <th>Status</th>
-        </tr>
-
-        ${
-          adminData.rounds
-            .map(
-              (item) => `
-                <tr>
-                  <td>
-                    SF${item.id}
-                  </td>
-
-                  <td class="teal">
-                    ${item.mult.toFixed(2)}x
-                  </td>
-
-                  <td>Completed</td>
-                </tr>
-              `,
-            )
-            .join("") ||
-          "<tr><td>No completed rounds</td></tr>"
-        }
-      </table>
-    </div>
-  `;
-}
-
-function settingsForm() {
-  const current =
-    adminData.settings;
-
-  return `
-    <form id="settingsform">
-      <div class="formgrid">
-        ${[
-          [
-            "welcome",
-            "Welcome Bonus %",
-          ],
-          [
-            "promo",
-            "Promo Code Bonus %",
-          ],
-          [
-            "losing",
-            "Losing Bonus %",
-          ],
-        ]
-          .map(
-            ([key, title]) => `
-              <label>
-                ${title}
-
-                <input
-                  name="${key}"
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="1"
-                  value="${esc(
-                    current[key],
-                  )}"
-                  required
-                >
-              </label>
-            `,
-          )
-          .join("")}
-      </div>
-
-      <label>
-        Promo code
-
-        <input
-          name="promoCode"
-          value="${esc(
-            current.promoCode,
-          )}"
-          pattern="[A-Z0-9_-]{3,30}"
-          required
-        >
-      </label>
-
-      <label>
-        Rules
-
-        <textarea
-          name="rules"
-          rows="5"
-          maxlength="4000"
-        >${esc(
-          current.rules,
-        )}</textarea>
-      </label>
-
-      <label>
-        24/7 support link
-        (WhatsApp / Telegram)
-
-        <input
-          name="support"
-          type="url"
-          value="${esc(
-            current.support,
-          )}"
-          placeholder="https://wa.me/91..."
-        >
-      </label>
-
-      <button class="wine">
-        SAVE SETTINGS
-      </button>
-
-      <p
-        class="error"
-        id="formerror"
-      ></p>
-    </form>
-  `;
-}
-
-async function renderAdmin() {
-  adminData =
-    await api(
-      "admin/data",
-    );
-
-  config =
-    adminData.settings;
-
-  app.innerHTML = `
-    <div class="adminshell">
-      <aside>
-        ${logo()}
-
-        <h4>ADMIN PANEL</h4>
-
-        <nav>
-          ${sections
-            .map(
-              (
-                title,
-                index,
-              ) => `
-                <button
-                  class="${
-                    page ===
-                    title
-                      ? "green"
-                      : ""
-                  }"
-                  data-section="${index}"
-                >${esc(
-                  title,
-                )}</button>
-              `,
-            )
-            .join("")}
-        </nav>
-
-        <button
-          data-logout
-          class="outline full"
-        >LOGOUT</button>
-      </aside>
-
-      <main class="adminmain">
-        <header>
-          <h1>
-            ${esc(page)}
-          </h1>
-
-          <span class="pill">
-            DEMO MODE
-          </span>
-
-          <button
-            data-adminrefresh
-            class="mini green"
-          >Refresh</button>
-        </header>
-
-        <div
-          id="admincontent"
-        ></div>
-
-        <footer>
-          Virtual demo coins only
-        </footer>
-      </main>
-    </div>
-  `;
-
-  const data =
-    adminData;
-
-  let html = "";
-
-  if (
-    page ===
-    "Dashboard"
-  ) {
-    const stats = [
-      [
-        "Total Customers",
-        data.users.length,
-      ],
-      [
-        "Demo Coins Issued",
-        data.coins,
-      ],
-      [
-        "Pending Deposits",
-        data.requests.filter(
-          (item) =>
-            item.type ===
-              "DEPOSIT" &&
-            item.status ===
-              "PENDING",
-        ).length,
-      ],
-      [
-        "Pending Withdrawals",
-        data.requests.filter(
-          (item) =>
-            item.type ===
-              "WITHDRAWAL" &&
-            item.status ===
-              "PENDING",
-        ).length,
-      ],
-    ];
-
-    html = `
-      <h2>
-        SUPER FAST AVIATOR ADMIN
-      </h2>
-
-      <p class="muted">
-        Virtual demo management
-      </p>
-
-      <div class="stats">
-        ${stats
-          .map(
-            (
-              [title, value],
-            ) => `
-              <div class="card">
-                <span>
-                  ${title}
-                </span>
-
-                <b>
-                  ${num(
-                    value,
-                  )}
-                </b>
-              </div>
-            `,
-          )
-          .join("")}
-      </div>
-
-      <div class="admingrid">
-        <section class="card">
-          <h2>
-            Recent Requests
-          </h2>
-
-          ${requestTable(
-            data.requests.slice(
-              0,
-              5,
-            ),
-          )}
-        </section>
-
-        <section class="card">
-          <h2>
-            Bonus Settings
-          </h2>
-
-          ${[
-            [
-              "welcome",
-              "Welcome Bonus",
-            ],
-            [
-              "promo",
-              "Promo Code Bonus",
-            ],
-            [
-              "losing",
-              "Losing Bonus",
-            ],
-          ]
-            .map(
-              (
-                [key, title],
-              ) => `
-                <div class="settingrow">
-                  <b>
-                    ${title}
-                  </b>
-
-                  <strong>
-                    ${pct(key)}%
-                  </strong>
-                </div>
-              `,
-            )
-            .join("")}
-
-          <button
-            class="wine full"
-            data-section="5"
-          >EDIT SETTINGS</button>
-        </section>
-
-        <section class="card">
-          <h2>
-            Recent Game Rounds
-          </h2>
-
-          ${roundsTable()}
-        </section>
-
-        <section class="card">
-          <h2>
-            Customer Support
-          </h2>
-
-          <h3>
-            24/7 CUSTOMER SUPPORT
-          </h3>
-
-          <p>
-            ${
-              data.settings.support
-                ? "Support link configured"
-                : "Configure your support link"
-            }
-          </p>
-
-          <button
-            class="green full"
-            data-section="9"
-          >MANAGE</button>
-        </section>
-      </div>
-    `;
-  } else if (
-    [
-      "Customers",
-      "Demo Coins",
-    ].includes(page)
-  ) {
-    html = `
-      <section class="card">
-        <h2>
-          Customer Accounts
-        </h2>
-
-        <div class="tablewrap">
-          <table>
-            <tr>
-              <th>Customer</th>
-              <th>Demo Coins</th>
-              <th>Status</th>
-              <th>Actions</th>
-            </tr>
-
-            ${
-              data.users
-                .map(
-                  (user) => `
-                    <tr>
-                      <td>
-                        ${esc(
-                          user.username,
-                        )}
-                      </td>
-
-                      <td>
-                        ${num(
-                          user.balance,
-                        )}
-                      </td>
-
-                      <td>
-                        ${
-                          user.blocked
-                            ? "BLOCKED"
-                            : "ACTIVE"
-                        }
-                      </td>
-
-                      <td>
-                        <button
-                          class="green mini"
-                          data-credit="${user.id}"
-                        >Add Coins</button>
-
-                        <button
-                          class="wine mini"
-                          data-block="${user.id},${
-                            user.blocked
-                              ? 0
-                              : 1
-                          }"
-                        >
-                          ${
-                            user.blocked
-                              ? "Unblock"
-                              : "Block"
-                          }
-                        </button>
-                      </td>
-                    </tr>
-                  `,
-                )
-                .join("") ||
-              `
-                <tr>
-                  <td>
-                    No customers.
-                    Sign up on the
-                    customer page first.
-                  </td>
-                </tr>
-              `
-            }
-          </table>
-        </div>
-      </section>
-    `;
-  } else if (
-    page.includes(
-      "Requests",
-    )
-  ) {
-    const type =
-      page.startsWith(
-        "Deposit",
-      )
-        ? "DEPOSIT"
-        : "WITHDRAWAL";
-
-    html = `
-      <section class="card">
-        <h2>
-          ${esc(page)}
-        </h2>
-
-        ${requestTable(
-          data.requests.filter(
-            (item) =>
-              item.type ===
-              type,
-          ),
-        )}
-      </section>
-    `;
-  } else if (
-    page ===
-    "Game History"
-  ) {
-    html = `
-      <section class="card">
-        <h2>
-          Completed Rounds
-        </h2>
-
-        ${roundsTable()}
-      </section>
-    `;
-  } else {
-    html = `
-      <section class="card">
-        <h2>
-          ${esc(page)}
-        </h2>
-
-        ${settingsForm()}
-      </section>
-    `;
-  }
-
-  $("#admincontent").innerHTML =
-    html;
-
-  if (
-    $("#settingsform")
-  ) {
-    $("#settingsform").onsubmit =
-      async (event) => {
-        event.preventDefault();
-
-        const data =
-          Object.fromEntries(
-            new FormData(
-              event.target,
-            ),
-          );
-
-        for (
-          const key of
-          [
-            "welcome",
-            "promo",
-            "losing",
-          ]
-        ) {
-          data[key] =
-            Number(
-              data[key],
-            );
-        }
-
-        try {
-          await api(
-            "admin/settings",
-            data,
-          );
-
-          toast(
-            "Settings saved",
-          );
-
-          await renderAdmin();
-        } catch (error) {
-          $("#formerror").textContent =
-            error.message;
-        }
-      };
-  }
 }
 
 app.addEventListener(
@@ -1796,17 +1572,17 @@ app.addEventListener(
         me = null;
         state = null;
 
-        if (
-          adminRoute
-        ) {
-          adminLoginScreen();
-        } else {
-          welcome();
-        }
+        welcome();
+      } else if (
+        button.hasAttribute(
+          "data-password",
+        )
+      ) {
+        changePassword();
       } else if (
         button.dataset.request
       ) {
-        request(
+        await request(
           button.dataset.request,
         );
       } else if (
@@ -1824,14 +1600,14 @@ app.addEventListener(
       } else if (
         button.dataset.step
       ) {
-        const value =
+        const step =
           Number(
             button.dataset.step,
           );
 
         const number =
           Math.abs(
-            value,
+            step,
           );
 
         const input =
@@ -1849,7 +1625,7 @@ app.addEventListener(
                 input.value,
               ) +
                 (
-                  value > 0
+                  step > 0
                     ? 100
                     : -100
                 ),
@@ -1901,6 +1677,7 @@ app.addEventListener(
         }
 
         busy = true;
+
         button.disabled =
           true;
 
@@ -1942,186 +1719,25 @@ app.addEventListener(
                         number,
                     ).value,
                   ),
+
                 panel:
                   number,
+
                 roundId:
                   state.round.id,
               },
             );
           }
         } finally {
-          busy =
-            false;
+          busy = false;
 
           await refresh();
         }
-      } else if (
-        button.dataset.section !==
-        undefined
-      ) {
-        page =
-          sections[
-            Number(
-              button.dataset.section,
-            )
-          ];
-
-        await renderAdmin();
-      } else if (
-        button.hasAttribute(
-          "data-adminrefresh",
-        )
-      ) {
-        await renderAdmin();
-      } else if (
-        button.dataset.review
-      ) {
-        const [
-          id,
-          status,
-        ] =
-          button.dataset.review.split(
-            ",",
-          );
-
-        button.disabled =
-          true;
-
-        await api(
-          "admin/request",
-          {
-            id:
-              Number(id),
-            status,
-          },
-        );
-
-        toast(
-          "Request updated",
-        );
-
-        await renderAdmin();
-      } else if (
-        button.dataset.block
-      ) {
-        const [
-          id,
-          blocked,
-        ] =
-          button.dataset.block.split(
-            ",",
-          );
-
-        await api(
-          "admin/customer",
-          {
-            id:
-              Number(id),
-            action:
-              "block",
-            blocked:
-              Number(
-                blocked,
-              ),
-          },
-        );
-
-        await renderAdmin();
-      } else if (
-        button.dataset.credit
-      ) {
-        const id =
-          Number(
-            button.dataset.credit,
-          );
-
-        show(
-          "Add Demo Coins",
-          `
-            <form id="creditform">
-              <label>
-                Demo coins
-
-                <input
-                  name="amount"
-                  type="number"
-                  min="100"
-                  max="25000"
-                  value="1000"
-                  required
-                >
-              </label>
-
-              <button class="green full">
-                CREDIT DEMO COINS
-              </button>
-
-              <p
-                id="formerror"
-                class="error"
-              ></p>
-            </form>
-          `,
-        );
-
-        $("#creditform").onsubmit =
-          async (event) => {
-            event.preventDefault();
-
-            const submit =
-              event.target.querySelector(
-                "button",
-              );
-
-            submit.disabled =
-              true;
-
-            try {
-              const form =
-                new FormData(
-                  event.target,
-                );
-
-              await api(
-                "admin/customer",
-                {
-                  id,
-                  action:
-                    "credit",
-                  amount:
-                    Number(
-                      form.get(
-                        "amount",
-                      ),
-                    ),
-                },
-              );
-
-              modal.close();
-
-              await renderAdmin();
-            } catch (error) {
-              $("#formerror").textContent =
-                error.message;
-            } finally {
-              submit.disabled =
-                false;
-            }
-          };
       }
     } catch (error) {
       toast(
         error.message,
       );
-
-      if (
-        adminRoute &&
-        me
-      ) {
-        await renderAdmin().catch(
-          () => {},
-        );
-      }
     }
   },
 );
@@ -2140,23 +1756,22 @@ async function init() {
     ).user;
 
     if (
-      adminRoute
-    ) {
-      if (
-        me?.role ===
-        "admin"
-      ) {
-        await renderAdmin();
-      } else {
-        adminLoginScreen();
-      }
-    } else if (
       me?.role ===
       "customer"
     ) {
-      renderGame();
+      if (
+        me.mustChangePassword
+      ) {
+        welcome();
 
-      await refresh();
+        changePassword(
+          true,
+        );
+      } else {
+        renderGame();
+
+        await refresh();
+      }
     } else {
       welcome();
     }
