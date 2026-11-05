@@ -1,0 +1,28 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 260 130"
+>
+  <g
+    fill="#0cb2b7"
+    transform="rotate(-13 130 65)"
+  >
+    <path
+      d="M40 78L13 48 45 51 68 74 187 46Q230 39 238 53Q242 67 208 78L67 96Z"
+    />
+    <path
+      d="M115 68L78 17 106 14 172 59ZM119 84L81 125 111 125 180 72Z"
+    />
+    <path
+      d="M198 47L204 34Q229 29 231 44Z"
+    />
+  </g>
+
+  <g
+    stroke="#0cb2b7"
+    stroke-width="5"
+  >
+    <path
+      d="M5 98L64 98M16 110L48 110"
+    />
+  </g>
+</svg>
