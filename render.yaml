@@ -2,7 +2,7 @@ services:
   - type: web
     name: super-fast-aviator
     runtime: node
-    plan: starter
+    plan: free
 
     buildCommand: npm install --omit=dev
     startCommand: npm start
@@ -22,9 +22,4 @@ services:
         sync: false
 
       - key: DATA_DIR
-        value: /var/data
-
-    disk:
-      name: aviator-data
-      mountPath: /var/data
-      sizeGB: 1
+        value: ./data
