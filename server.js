@@ -1,17 +1,23 @@
 import http from "node:http";
+import { createAdminFeatures } from "./adminFeatures.js";
 import { DatabaseSync } from "node:sqlite";
+
 import {
   randomBytes,
   randomInt,
   scryptSync,
   timingSafeEqual,
 } from "node:crypto";
+
 import fs from "node:fs";
 import path from "node:path";
 
-const dir = process.env.DATA_DIR || "./data";
+const dir =
+  process.env.DATA_DIR || "./data";
 
-fs.mkdirSync(dir, { recursive: true });
+fs.mkdirSync(dir, {
+  recursive: true,
+});
 
 const db = new DatabaseSync(
   path.join(dir, "aviator.sqlite"),
@@ -87,12 +93,14 @@ const one = (sql, ...params) =>
 const run = (sql, ...params) =>
   db.prepare(sql).run(...params);
 
-function tx(fn) {
+function tx(callback) {
   db.exec("BEGIN IMMEDIATE");
 
   try {
-    const result = fn();
+    const result = callback();
+
     db.exec("COMMIT");
+
     return result;
   } catch (error) {
     db.exec("ROLLBACK");
@@ -101,7 +109,8 @@ function tx(fn) {
 }
 
 function hash(password) {
-  const salt = randomBytes(16).toString("hex");
+  const salt =
+    randomBytes(16).toString("hex");
 
   const value = scryptSync(
     password,
@@ -109,28 +118,39 @@ function hash(password) {
     64,
   ).toString("hex");
 
-  return `${salt}:${value}`;
+  return salt + ":" + value;
 }
 
 function valid(password, stored) {
-  const [salt, value] = stored.split(":");
+  const [salt, value] =
+    stored.split(":");
 
   return timingSafeEqual(
     Buffer.from(value, "hex"),
-    scryptSync(password, salt, 64),
+    scryptSync(
+      password,
+      salt,
+      64,
+    ),
   );
 }
 
-const adminPassword = process.env.ADMIN_PASSWORD;
+const adminPassword =
+  process.env.ADMIN_PASSWORD;
 
-if (!adminPassword || adminPassword.length < 12) {
+if (
+  !adminPassword ||
+  adminPassword.length < 12 ||
+  adminPassword.length > 128
+) {
   throw new Error(
-    "Set ADMIN_PASSWORD to a unique password of at least 12 characters.",
+    "Set ADMIN_PASSWORD to a unique password of 12–128 characters.",
   );
 }
 
 const adminName =
-  process.env.ADMIN_USERNAME || "admin";
+  process.env.ADMIN_USERNAME ||
+  "admin";
 
 const existingAdmin = one(
   "SELECT * FROM users WHERE role='admin'",
@@ -138,15 +158,19 @@ const existingAdmin = one(
 
 if (!existingAdmin) {
   run(
-    `INSERT INTO users(username,password,role)
-     VALUES(?,?,'admin')`,
+    `INSERT INTO users(
+      username,
+      password,
+      role
+    ) VALUES(?,?,'admin')`,
     adminName,
     hash(adminPassword),
   );
 } else {
   run(
     `UPDATE users
-     SET username=?,password=?
+     SET username=?,
+         password=?
      WHERE id=?`,
     adminName,
     hash(adminPassword),
@@ -155,22 +179,37 @@ if (!existingAdmin) {
 }
 
 const defaultSettings = {
+  gameMode: "RANDOM",
+
+  manualMultiplier: "2.00",
+
   welcome: 10,
+
   promo: 10,
+
   losing: 10,
+
   promoCode: "SUPER10",
+
   rules:
-    "Demo coins only. Place a bet during the countdown. " +
+    "Demo coins only. " +
+    "Place a bet during the countdown. " +
     "Cash out before the plane flies away. " +
     "If it flies away first, your stake is lost. " +
     "Each round is randomly simulated on the server. " +
     "Losing bonus applies to lost stakes. " +
     "Welcome bonus applies to the first approved demo deposit. " +
     "Promo code is redeemable once after an approved deposit.",
+
   support: "",
 };
 
-for (const [key, value] of Object.entries(defaultSettings)) {
+for (
+  const [
+    key,
+    value,
+  ] of Object.entries(defaultSettings)
+) {
   run(
     "INSERT OR IGNORE INTO settings VALUES(?,?)",
     key,
@@ -180,34 +219,47 @@ for (const [key, value] of Object.entries(defaultSettings)) {
 
 function settings() {
   return Object.fromEntries(
-    q("SELECT * FROM settings").map((item) => [
+    q(
+      "SELECT * FROM settings",
+    ).map((item) => [
       item.key,
       item.value,
     ]),
   );
 }
 
-function credit(userId, amount, note) {
+function credit(
+  userId,
+  coins,
+  note,
+) {
   run(
-    "UPDATE users SET balance=balance+? WHERE id=?",
-    amount,
+    `UPDATE users
+     SET balance=balance+?
+     WHERE id=?`,
+    coins,
     userId,
   );
 
   run(
-    `INSERT INTO ledger(user_id,amount,note)
-     VALUES(?,?,?)`,
+    `INSERT INTO ledger(
+      user_id,
+      amount,
+      note
+    ) VALUES(?,?,?)`,
     userId,
-    amount,
+    coins,
     note,
   );
 }
 
 // Refund unfinished stakes after a server restart.
 tx(() => {
-  for (const bet of q(
+  const activeBets = q(
     "SELECT * FROM bets WHERE status='ACTIVE'",
-  )) {
+  );
+
+  for (const bet of activeBets) {
     credit(
       bet.user_id,
       bet.stake,
@@ -221,52 +273,101 @@ tx(() => {
   }
 });
 
+function buildRound(id) {
+  const currentSettings =
+    settings();
+
+  return {
+    id,
+
+    phase: "WAITING",
+
+    start:
+      Date.now() + 7000,
+
+    end: 0,
+
+    crash: 1,
+
+    mode:
+      currentSettings.gameMode === "ADMIN"
+        ? "ADMIN"
+        : "RANDOM",
+
+    fixed:
+      Number(
+        currentSettings.manualMultiplier,
+      ) || 2,
+  };
+}
+
 const nextRoundId = Number(
   one(`
     SELECT MAX(
-      COALESCE((SELECT MAX(id) FROM rounds),0),
-      COALESCE((SELECT MAX(round_id) FROM bets),0)
+      COALESCE(
+        (SELECT MAX(id) FROM rounds),
+        0
+      ),
+      COALESCE(
+        (SELECT MAX(round_id) FROM bets),
+        0
+      )
     )+1 n
   `).n,
 );
 
-let round = {
-  id: nextRoundId,
-  phase: "WAITING",
-  start: Date.now() + 7000,
-  end: 0,
-  crash: 1,
-};
+let round = buildRound(
+  nextRoundId,
+);
 
 function begin() {
   round.phase = "FLYING";
   round.start = Date.now();
 
-  const randomValue =
-    randomInt(0, 1000000) / 1000000;
+  if (round.mode === "ADMIN") {
+    round.crash =
+      round.fixed;
+  } else {
+    const randomValue =
+      randomInt(
+        0,
+        1000000,
+      ) / 1000000;
 
-  round.crash = Math.min(
-    50,
-    Math.max(
-      1,
-      Math.floor(
-        (0.97 / (1 - randomValue)) * 100,
-      ) / 100,
-    ),
-  );
+    round.crash =
+      Math.min(
+        50,
+        Math.max(
+          1,
+          Math.floor(
+            (
+              0.97 /
+              (1 - randomValue)
+            ) * 100,
+          ) / 100,
+        ),
+      );
+  }
 }
 
 function multiplier() {
-  if (round.phase !== "FLYING") {
+  if (
+    round.phase !== "FLYING"
+  ) {
     return 1;
   }
 
   const seconds =
-    (Date.now() - round.start) / 1000;
+    (
+      Date.now() -
+      round.start
+    ) / 1000;
 
   return (
     Math.floor(
-      Math.exp(seconds * 0.16) * 100,
+      Math.exp(
+        seconds * 0.16,
+      ) * 100,
     ) / 100
   );
 }
@@ -285,29 +386,44 @@ function advance() {
   ) {
     tx(() => {
       run(
-        "INSERT INTO rounds(id,mult) VALUES(?,?)",
+        `INSERT INTO rounds(
+          id,
+          mult,
+          mode
+        ) VALUES(?,?,?)`,
         round.id,
         round.crash,
+        round.mode,
       );
 
       const percentage =
-        Number(settings().losing);
+        Number(
+          settings().losing,
+        );
 
       const activeBets = q(
-        `SELECT * FROM bets
-         WHERE round_id=? AND status='ACTIVE'`,
+        `SELECT *
+         FROM bets
+         WHERE round_id=?
+         AND status='ACTIVE'`,
         round.id,
       );
 
-      for (const bet of activeBets) {
+      for (
+        const bet of activeBets
+      ) {
         run(
           "UPDATE bets SET status='LOST' WHERE id=?",
           bet.id,
         );
 
-        const bonus = Math.floor(
-          (bet.stake * percentage) / 100,
-        );
+        const bonus =
+          Math.floor(
+            (
+              bet.stake *
+              percentage
+            ) / 100,
+          );
 
         if (bonus) {
           credit(
@@ -319,47 +435,76 @@ function advance() {
       }
     });
 
-    round.phase = "CRASHED";
-    round.end = Date.now() + 3500;
+    round.phase =
+      "CRASHED";
+
+    round.end =
+      Date.now() + 3500;
   }
 
   if (
     round.phase === "CRASHED" &&
     Date.now() >= round.end
   ) {
-    round = {
-      id: round.id + 1,
-      phase: "WAITING",
-      start: Date.now() + 7000,
-      end: 0,
-      crash: 1,
-    };
+    round = buildRound(
+      round.id + 1,
+    );
   }
 }
 
-const roundTimer = setInterval(advance, 80);
+const roundTimer =
+  setInterval(
+    advance,
+    80,
+  );
+
 roundTimer.unref();
 
-const sessions = new Map();
-const limits = new Map();
+const sessions =
+  new Map();
+
+const limits =
+  new Map();
 
 setInterval(() => {
-  const now = Date.now();
+  const now =
+    Date.now();
 
-  for (const [key, value] of sessions) {
-    if (value.exp < now) {
-      sessions.delete(key);
+  for (
+    const [
+      token,
+      session,
+    ] of sessions
+  ) {
+    if (
+      session.exp < now
+    ) {
+      sessions.delete(
+        token,
+      );
     }
   }
 
-  for (const [key, value] of limits) {
-    if (value.exp < now) {
-      limits.delete(key);
+  for (
+    const [
+      key,
+      limit,
+    ] of limits
+  ) {
+    if (
+      limit.exp < now
+    ) {
+      limits.delete(
+        key,
+      );
     }
   }
 }, 60000).unref();
 
-function fail(message, status = 400) {
+function fail(
+  message,
+  status = 400,
+) {
   throw Object.assign(
     new Error(message),
     { status },
@@ -383,891 +528,848 @@ function amount(value) {
 function safeUser(user) {
   return {
     id: user.id,
-    username: user.username,
-    role: user.role,
-    balance: user.balance,
-    blocked: user.blocked,
+
+    username:
+      user.username,
+
+    role:
+      user.role,
+
+    balance:
+      user.balance,
+
+    blocked:
+      user.blocked,
+
+    fullName:
+      user.full_name,
+
+    mustChangePassword:
+      !!user.must_change,
   };
 }
 
 async function body(req) {
-  let text = "";
+  const chunks = [];
 
-  for await (const chunk of req) {
-    text += chunk;
+  let size = 0;
 
-    if (text.length > 16000) {
-      fail("Request too large", 413);
+  for await (
+    const chunk of req
+  ) {
+    size +=
+      chunk.length;
+
+    if (
+      size > 2400000
+    ) {
+      fail(
+        "Request too large",
+        413,
+      );
     }
+
+    chunks.push(
+      chunk,
+    );
   }
+
+  let value;
 
   try {
-    return JSON.parse(text || "{}");
+    value =
+      JSON.parse(
+        Buffer.concat(
+          chunks,
+        ).toString("utf8") ||
+          "{}",
+      );
   } catch {
-    fail("Invalid JSON");
+    fail(
+      "Invalid JSON",
+    );
   }
+
+  if (
+    !value ||
+    typeof value !== "object" ||
+    Array.isArray(value)
+  ) {
+    fail(
+      "JSON object required.",
+    );
+  }
+
+  return value;
 }
 
-function tableData() {
-  return {
-    users: q(`
-      SELECT id,username,balance,blocked
-      FROM users
-      WHERE role='customer'
-    `),
+const features =
+  createAdminFeatures({
+    db,
+    q,
+    one,
+    run,
+    tx,
+    hash,
+    valid,
+    credit,
+    settings,
+    sessions,
+    fail,
+    amount,
 
-    requests: q(`
-      SELECT r.*,u.username
-      FROM requests r
-      JOIN users u ON u.id=r.user_id
-      ORDER BY r.id DESC
-      LIMIT 200
-    `),
+    getGame: () => ({
+      id:
+        round.id,
 
-    rounds: q(`
-      SELECT *
-      FROM rounds
-      ORDER BY id DESC
-      LIMIT 30
-    `),
+      phase:
+        round.phase,
 
-    settings: settings(),
+      mode:
+        round.mode,
 
-    coins: one(`
-      SELECT COALESCE(
-        SUM(
-          CASE WHEN amount>0
-          THEN amount ELSE 0 END
-        ),
-        0
-      ) n
-      FROM ledger
-    `).n,
-  };
-}
+      mult:
+        round.phase === "CRASHED"
+          ? round.crash
+          : multiplier(),
+    }),
+  });
 
-const server = http.createServer(
-  async (req, res) => {
-    res.setHeader(
-      "X-Content-Type-Options",
-      "nosniff",
-    );
-
-    res.setHeader(
-      "Referrer-Policy",
-      "same-origin",
-    );
-
-    res.setHeader(
-      "X-Frame-Options",
-      "DENY",
-    );
-
-    res.setHeader(
-      "Content-Security-Policy",
-      "default-src 'self'; " +
-        "script-src 'self'; " +
-        "style-src 'self'; " +
-        "img-src 'self'; " +
-        "connect-src 'self'; " +
-        "object-src 'none'; " +
-        "frame-ancestors 'none'; " +
-        "base-uri 'none'; " +
-        "form-action 'self'",
-    );
-
-    try {
-      const url = new URL(
-        req.url,
-        "http://localhost",
-      );
-
-      const route = url.pathname;
-
-      if (route === "/health") {
-        res.end("ok");
-        return;
-      }
-
-      if (!route.startsWith("/api/")) {
-        const files = {
-          "/": "index.html",
-          "/admin": "index.html",
-          "/app.js": "app.js",
-          "/style.css": "style.css",
-          "/plane.svg": "plane.svg",
-        };
-
-        const file = files[route];
-
-        if (!file) {
-          fail("Not found", 404);
-        }
-
-        const contentType =
-          file.endsWith(".js")
-            ? "text/javascript"
-            : file.endsWith(".css")
-              ? "text/css"
-              : file.endsWith(".svg")
-                ? "image/svg+xml"
-                : "text/html";
-
-        res.setHeader(
-          "Content-Type",
-          contentType,
-        );
-
-        res.end(
-          fs.readFileSync(
-            new URL(
-              "./public/" + file,
-              import.meta.url,
-            ),
-          ),
-        );
-
-        return;
-      }
-
+const server =
+  http.createServer(
+    async (req, res) => {
       res.setHeader(
-        "Content-Type",
-        "application/json",
+        "X-Content-Type-Options",
+        "nosniff",
       );
 
       res.setHeader(
-        "Cache-Control",
-        "no-store",
+        "Referrer-Policy",
+        "same-origin",
       );
 
-      const post = req.method === "POST";
+      res.setHeader(
+        "X-Frame-Options",
+        "DENY",
+      );
 
-      if (
-        !["GET", "POST"].includes(req.method)
-      ) {
-        fail("Method not allowed", 405);
-      }
+      res.setHeader(
+        "Content-Security-Policy",
+        "default-src 'self'; " +
+          "script-src 'self'; " +
+          "style-src 'self'; " +
+          "img-src 'self' data:; " +
+          "connect-src 'self'; " +
+          "object-src 'none'; " +
+          "frame-ancestors 'none'; " +
+          "base-uri 'none'; " +
+          "form-action 'self'",
+      );
 
-      if (post) {
-        const origin = req.headers.origin;
+      try {
+        const url =
+          new URL(
+            req.url,
+            "http://localhost",
+          );
+
+        const route =
+          url.pathname;
 
         if (
-          origin &&
-          origin !==
-            `https://${req.headers.host}` &&
-          origin !==
-            `http://${req.headers.host}`
+          route === "/health"
         ) {
-          fail("Invalid origin", 403);
+          res.end("ok");
+          return;
         }
 
         if (
-          !(
-            req.headers["content-type"] || ""
-          ).startsWith("application/json")
+          !route.startsWith(
+            "/api/",
+          )
         ) {
-          fail("JSON required", 415);
-        }
-      }
+          const files = {
+            "/":
+              "index.html",
 
-      const data = post
-        ? await body(req)
-        : {};
+            "/admin":
+              "admin.html",
 
-      let token = (
-        req.headers.cookie || ""
-      )
-        .split(";")
-        .map((value) => value.trim())
-        .find((value) =>
-          value.startsWith("sfa_session="),
-        )
-        ?.slice(12);
+            "/admin/":
+              "admin.html",
 
-      const session = sessions.get(token);
+            "/admin.js":
+              "admin.js",
 
-      let user =
-        session &&
-        session.exp > Date.now()
-          ? one(
-              "SELECT * FROM users WHERE id=?",
-              session.id,
-            )
-          : null;
+            "/app.js":
+              "app.js",
 
-      if (user?.blocked) {
-        user = null;
-      }
+            "/style.css":
+              "style.css",
 
-      let output = {};
-
-      if (
-        route === "/api/public" &&
-        !post
-      ) {
-        output = settings();
-      } else if (
-        ["/api/login", "/api/signup"].includes(
-          route,
-        ) &&
-        post
-      ) {
-        const key =
-          req.socket.remoteAddress;
-
-        const limit =
-          limits.get(key) || {
-            n: 0,
-            exp: Date.now() + 900000,
+            "/plane.svg":
+              "plane.svg",
           };
 
-        limit.n += 1;
+          const file =
+            files[route];
 
-        if (limit.n > 30) {
-          fail(
-            "Too many attempts. Try again in 15 minutes.",
-            429,
-          );
-        }
-
-        limits.set(key, limit);
-
-        const username = String(
-          data.username || "",
-        )
-          .toLowerCase()
-          .trim();
-
-        const password = String(
-          data.password || "",
-        );
-
-        if (
-          !/^[a-z0-9._-]{4,30}$/.test(
-            username,
-          ) ||
-          password.length < 8 ||
-          password.length > 128
-        ) {
-          fail(
-            "Username: 4–30 letters/numbers. Password: 8–128 characters.",
-          );
-        }
-
-        if (route === "/api/signup") {
-          if (
-            one(
-              "SELECT id FROM users WHERE username=?",
-              username,
-            )
-          ) {
-            fail(
-              "Username already exists.",
-            );
-          }
-
-          run(
-            `INSERT INTO users(username,password)
-             VALUES(?,?)`,
-            username,
-            hash(password),
-          );
-        }
-
-        const foundUser = one(
-          "SELECT * FROM users WHERE username=?",
-          username,
-        );
-
-        if (
-          !foundUser ||
-          !valid(
-            password,
-            foundUser.password,
-          ) ||
-          foundUser.blocked
-        ) {
-          fail(
-            "Invalid login or blocked account.",
-            401,
-          );
-        }
-
-        if (
-          data.admin &&
-          foundUser.role !== "admin"
-        ) {
-          fail(
-            "Admin account required",
-            403,
-          );
-        }
-
-        if (
-          !data.admin &&
-          foundUser.role !== "customer"
-        ) {
-          fail(
-            "Use /admin for administrator login.",
-            403,
-          );
-        }
-
-        token = randomBytes(32).toString(
-          "hex",
-        );
-
-        sessions.set(token, {
-          id: foundUser.id,
-          exp:
-            Date.now() +
-            8 * 3600000,
-        });
-
-        const secure =
-          process.env.NODE_ENV ===
-          "production"
-            ? "; Secure"
-            : "";
-
-        res.setHeader(
-          "Set-Cookie",
-          `sfa_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800${secure}`,
-        );
-
-        output = {
-          user: safeUser(foundUser),
-        };
-      } else if (
-        route === "/api/logout" &&
-        post
-      ) {
-        sessions.delete(token);
-
-        res.setHeader(
-          "Set-Cookie",
-          "sfa_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0",
-        );
-      } else if (
-        route === "/api/me" &&
-        !post
-      ) {
-        output = {
-          user: user
-            ? safeUser(user)
-            : null,
-        };
-      } else {
-        if (!user) {
-          fail(
-            "Please log in.",
-            401,
-          );
-        }
-
-        if (
-          route.startsWith("/api/admin/")
-        ) {
-          if (
-            user.role !== "admin"
-          ) {
-            fail(
-              "Admin access required",
-              403,
-            );
-          }
-
-          if (
-            route ===
-              "/api/admin/data" &&
-            !post
-          ) {
-            output = tableData();
-          } else if (
-            route ===
-              "/api/admin/settings" &&
-            post
-          ) {
-            for (const key of [
-              "welcome",
-              "promo",
-              "losing",
-            ]) {
-              if (
-                !Number.isInteger(
-                  data[key],
-                ) ||
-                data[key] < 0 ||
-                data[key] > 100
-              ) {
-                fail(
-                  "Bonus percentages must be from 0 to 100.",
-                );
-              }
-            }
-
-            if (
-              !/^[A-Z0-9_-]{3,30}$/.test(
-                data.promoCode || "",
-              )
-            ) {
-              fail(
-                "Promo code: 3–30 uppercase letters/numbers.",
-              );
-            }
-
-            if (
-              String(
-                data.rules || "",
-              ).length > 4000
-            ) {
-              fail(
-                "Rules too long.",
-              );
-            }
-
-            if (
-              data.support &&
-              !/^https:\/\/(wa\.me|t\.me)\/[A-Za-z0-9_+/?=&%-]+$/.test(
-                data.support,
-              )
-            ) {
-              fail(
-                "Enter an https://wa.me/ or https://t.me/ support link.",
-              );
-            }
-
-            tx(() => {
-              for (const key of [
-                "welcome",
-                "promo",
-                "losing",
-                "promoCode",
-                "rules",
-                "support",
-              ]) {
-                run(
-                  "UPDATE settings SET value=? WHERE key=?",
-                  String(
-                    data[key] ?? "",
-                  ),
-                  key,
-                );
-              }
-            });
-          } else if (
-            route ===
-              "/api/admin/customer" &&
-            post
-          ) {
-            const customer = one(
-              `SELECT * FROM users
-               WHERE id=? AND role='customer'`,
-              Number(data.id),
-            );
-
-            if (!customer) {
-              fail(
-                "Customer not found",
-              );
-            }
-
-            if (
-              data.action ===
-              "credit"
-            ) {
-              tx(() =>
-                credit(
-                  customer.id,
-                  amount(
-                    data.amount,
-                  ),
-                  "Admin demo credit",
-                ),
-              );
-            } else if (
-              data.action ===
-              "block"
-            ) {
-              run(
-                "UPDATE users SET blocked=? WHERE id=?",
-                data.blocked
-                  ? 1
-                  : 0,
-                customer.id,
-              );
-            } else {
-              fail(
-                "Invalid action",
-              );
-            }
-          } else if (
-            route ===
-              "/api/admin/request" &&
-            post
-          ) {
-            if (
-              ![
-                "SUCCESS",
-                "REJECTED",
-              ].includes(
-                data.status,
-              )
-            ) {
-              fail(
-                "Invalid status",
-              );
-            }
-
-            tx(() => {
-              const request = one(
-                "SELECT * FROM requests WHERE id=?",
-                Number(data.id),
-              );
-
-              if (
-                !request ||
-                request.status !==
-                  "PENDING"
-              ) {
-                fail(
-                  "Request already processed or missing.",
-                );
-              }
-
-              if (
-                request.type ===
-                  "DEPOSIT" &&
-                data.status ===
-                  "SUCCESS"
-              ) {
-                const first =
-                  !one(
-                    `SELECT id FROM requests
-                     WHERE user_id=?
-                     AND type='DEPOSIT'
-                     AND status='SUCCESS'`,
-                    request.user_id,
-                  );
-
-                credit(
-                  request.user_id,
-                  request.amount,
-                  "Approved demo deposit",
-                );
-
-                if (first) {
-                  const bonus =
-                    Math.floor(
-                      (request.amount *
-                        Number(
-                          settings()
-                            .welcome,
-                        )) /
-                        100,
-                    );
-
-                  if (bonus) {
-                    credit(
-                      request.user_id,
-                      bonus,
-                      "Welcome demo bonus",
-                    );
-                  }
-                }
-              }
-
-              if (
-                request.type ===
-                  "WITHDRAWAL" &&
-                data.status ===
-                  "REJECTED"
-              ) {
-                credit(
-                  request.user_id,
-                  request.amount,
-                  "Rejected withdrawal restored",
-                );
-              }
-
-              run(
-                "UPDATE requests SET status=? WHERE id=?",
-                data.status,
-                request.id,
-              );
-            });
-          } else {
+          if (!file) {
             fail(
               "Not found",
               404,
             );
           }
-        } else {
+
+          let contentType =
+            "text/html";
+
           if (
-            user.role !==
-            "customer"
+            file.endsWith(
+              ".js",
+            )
+          ) {
+            contentType =
+              "text/javascript";
+          } else if (
+            file.endsWith(
+              ".css",
+            )
+          ) {
+            contentType =
+              "text/css";
+          } else if (
+            file.endsWith(
+              ".svg",
+            )
+          ) {
+            contentType =
+              "image/svg+xml";
+          }
+
+          res.setHeader(
+            "Content-Type",
+            contentType,
+          );
+
+          res.end(
+            fs.readFileSync(
+              new URL(
+                "./public/" +
+                  file,
+                import.meta.url,
+              ),
+            ),
+          );
+
+          return;
+        }
+
+        res.setHeader(
+          "Content-Type",
+          "application/json",
+        );
+
+        res.setHeader(
+          "Cache-Control",
+          "no-store",
+        );
+
+        const post =
+          req.method ===
+          "POST";
+
+        if (
+          ![
+            "GET",
+            "POST",
+          ].includes(
+            req.method,
+          )
+        ) {
+          fail(
+            "Method not allowed",
+            405,
+          );
+        }
+
+        if (post) {
+          const origin =
+            req.headers.origin;
+
+          if (
+            origin &&
+            origin !==
+              `https://${req.headers.host}` &&
+            origin !==
+              `http://${req.headers.host}`
           ) {
             fail(
-              "Customer account required",
+              "Invalid origin",
               403,
             );
           }
 
-          advance();
+          const contentType =
+            req.headers[
+              "content-type"
+            ] || "";
+
+          if (
+            !contentType.startsWith(
+              "application/json",
+            )
+          ) {
+            fail(
+              "JSON required",
+              415,
+            );
+          }
+        }
+
+        const data =
+          post
+            ? await body(req)
+            : {};
+
+        const adminPortal =
+          route.startsWith(
+            "/api/admin/",
+          ) ||
+          url.searchParams.get(
+            "portal",
+          ) === "admin" ||
+          data.admin === true;
+
+        const cookieName =
+          adminPortal
+            ? "sfa_admin_session"
+            : "sfa_session";
+
+        const cookies =
+          Object.fromEntries(
+            (
+              req.headers.cookie ||
+              ""
+            )
+              .split(";")
+              .map(
+                (item) =>
+                  item
+                    .trim()
+                    .split("="),
+              ),
+          );
+
+        let token =
+          cookies[cookieName];
+
+        const session =
+          sessions.get(
+            token,
+          );
+
+        let user =
+          session &&
+          session.exp >
+            Date.now()
+            ? one(
+                `SELECT *
+                 FROM users
+                 WHERE id=?`,
+                session.id,
+              )
+            : null;
+
+        if (
+          user?.blocked
+        ) {
+          user = null;
+        }
+
+        if (
+          route.startsWith(
+            "/api/media/",
+          ) &&
+          !post
+        ) {
+          const adminSession =
+            sessions.get(
+              cookies.sfa_admin_session,
+            );
+
+          const adminUser =
+            adminSession &&
+            adminSession.exp >
+              Date.now()
+              ? one(
+                  `SELECT *
+                   FROM users
+                   WHERE id=?
+                   AND role='admin'
+                   AND blocked=0`,
+                  adminSession.id,
+                )
+              : null;
+
+          const file =
+            features.media(
+              route.slice(
+                "/api/media/".length,
+              ),
+              adminUser || user,
+            );
+
+          res.setHeader(
+            "Content-Type",
+            file.mime,
+          );
+
+          res.setHeader(
+            "Content-Disposition",
+            "inline",
+          );
+
+          res.end(
+            Buffer.from(
+              file.bytes,
+            ),
+          );
+
+          return;
+        }
+
+        let output = {};
+
+        if (
+          route ===
+            "/api/public" &&
+          !post
+        ) {
+          const {
+            manualMultiplier,
+            ...publicSettings
+          } = settings();
+
+          output =
+            publicSettings;
+        } else if (
+          [
+            "/api/login",
+            "/api/signup",
+            "/api/admin/login",
+          ].includes(
+            route,
+          ) &&
+          post
+        ) {
+          const ip =
+            req.socket.remoteAddress;
+
+          const key =
+            ip +
+            "|" +
+            String(
+              data.username ||
+                "",
+            )
+              .toLowerCase()
+              .slice(0, 30);
+
+          const limit =
+            limits.get(key) || {
+              n: 0,
+              exp:
+                Date.now() +
+                900000,
+            };
+
+          limit.n += 1;
+
+          if (
+            limit.n > 30
+          ) {
+            fail(
+              "Too many attempts. Try again in 15 minutes.",
+              429,
+            );
+          }
+
+          limits.set(
+            key,
+            limit,
+          );
+
+          const username =
+            String(
+              data.username ||
+                "",
+            )
+              .toLowerCase()
+              .trim();
+
+          const password =
+            String(
+              data.password ||
+                "",
+            );
+
+          if (
+            !/^[a-z0-9._-]{4,30}$/.test(
+              username,
+            ) ||
+            password.length < 8 ||
+            password.length > 128
+          ) {
+            fail(
+              "Username: 4–30 letters/numbers. Password: 8–128 characters.",
+            );
+          }
 
           if (
             route ===
-              "/api/state" &&
-            !post
+            "/api/signup"
           ) {
-            output = {
-              user: safeUser(
-                one(
-                  "SELECT * FROM users WHERE id=?",
-                  user.id,
-                ),
-              ),
+            const exists =
+              one(
+                `SELECT id
+                 FROM users
+                 WHERE username=?`,
+                username,
+              );
 
-              round: {
-                id: round.id,
-                phase:
-                  round.phase,
-                mult:
-                  round.phase ===
-                  "CRASHED"
-                    ? round.crash
-                    : multiplier(),
-                countdown:
-                  Math.max(
-                    0,
-                    Math.ceil(
-                      (round.start -
-                        Date.now()) /
-                        1000,
+            if (
+              exists
+            ) {
+              fail(
+                "Username already exists.",
+              );
+            }
+
+            run(
+              `INSERT INTO users(
+                username,
+                password
+              ) VALUES(?,?)`,
+              username,
+              hash(
+                password,
+              ),
+            );
+          }
+
+          const foundUser =
+            one(
+              `SELECT *
+               FROM users
+               WHERE username=?`,
+              username,
+            );
+
+          if (
+            !foundUser ||
+            !valid(
+              password,
+              foundUser.password,
+            ) ||
+            foundUser.blocked
+          ) {
+            fail(
+              "Invalid login or blocked account.",
+              401,
+            );
+          }
+
+          if (
+            adminPortal &&
+            foundUser.role !==
+              "admin"
+          ) {
+            fail(
+              "Admin account required",
+              403,
+            );
+          }
+
+          if (
+            !adminPortal &&
+            foundUser.role !==
+              "customer"
+          ) {
+            fail(
+              "Use /admin for administrator login.",
+              403,
+            );
+          }
+
+          token =
+            randomBytes(
+              32,
+            ).toString(
+              "hex",
+            );
+
+          sessions.set(
+            token,
+            {
+              id:
+                foundUser.id,
+
+              exp:
+                Date.now() +
+                8 * 3600000,
+            },
+          );
+
+          const secure =
+            process.env.NODE_ENV ===
+            "production"
+              ? "; Secure"
+              : "";
+
+          res.setHeader(
+            "Set-Cookie",
+            `${cookieName}=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800${secure}`,
+          );
+
+          output = {
+            user:
+              safeUser(
+                foundUser,
+              ),
+          };
+        } else if (
+          [
+            "/api/logout",
+            "/api/admin/logout",
+          ].includes(
+            route,
+          ) &&
+          post
+        ) {
+          sessions.delete(
+            token,
+          );
+
+          res.setHeader(
+            "Set-Cookie",
+            `${cookieName}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0`,
+          );
+        } else if (
+          route ===
+            "/api/me" &&
+          !post
+        ) {
+          output = {
+            user:
+              user
+                ? safeUser(
+                    user,
+                  )
+                : null,
+          };
+        } else {
+          if (
+            !user
+          ) {
+            fail(
+              "Please log in.",
+              401,
+            );
+          }
+
+          if (
+            route.startsWith(
+              "/api/admin/",
+            )
+          ) {
+            if (
+              user.role !==
+              "admin"
+            ) {
+              fail(
+                "Admin access required",
+                403,
+              );
+            }
+
+            output =
+              features.admin(
+                route,
+                post,
+                data,
+                url,
+                user,
+              );
+          } else {
+            if (
+              user.role !==
+              "customer"
+            ) {
+              fail(
+                "Customer account required",
+                403,
+              );
+            }
+
+            if (
+              user.must_change &&
+              route !==
+                "/api/password"
+            ) {
+              fail(
+                "Change your temporary password first.",
+                428,
+              );
+            }
+
+            advance();
+
+            if (
+              route ===
+                "/api/state" &&
+              !post
+            ) {
+              output = {
+                user:
+                  safeUser(
+                    one(
+                      `SELECT *
+                       FROM users
+                       WHERE id=?`,
+                      user.id,
                     ),
                   ),
-              },
 
-              history: q(
-                `SELECT * FROM rounds
-                 ORDER BY id DESC LIMIT 12`,
-              ),
+                round: {
+                  id:
+                    round.id,
 
-              bets: q(
-                `SELECT * FROM bets
-                 WHERE user_id=?
-                 ORDER BY id DESC LIMIT 30`,
-                user.id,
-              ),
+                  phase:
+                    round.phase,
 
-              allBets: q(
-                `SELECT
-                   b.stake,b.status,b.mult,b.payout,
-                   u.username
-                 FROM bets b
-                 JOIN users u ON u.id=b.user_id
-                 WHERE round_id=?
-                 ORDER BY b.id DESC LIMIT 50`,
-                round.id,
-              ),
-            };
-          } else if (
-            route ===
-              "/api/bet" &&
-            post
-          ) {
-            if (
-              round.phase !==
-                "WAITING" ||
-              data.roundId !==
-                round.id
+                  mode:
+                    round.mode,
+
+                  mult:
+                    round.phase ===
+                    "CRASHED"
+                      ? round.crash
+                      : multiplier(),
+
+                  countdown:
+                    Math.max(
+                      0,
+                      Math.ceil(
+                        (
+                          round.start -
+                          Date.now()
+                        ) / 1000,
+                      ),
+                    ),
+                },
+
+                history:
+                  q(`
+                    SELECT *
+                    FROM rounds
+                    ORDER BY id DESC
+                    LIMIT 12
+                  `),
+
+                bets:
+                  q(
+                    `SELECT *
+                     FROM bets
+                     WHERE user_id=?
+                     ORDER BY id DESC
+                     LIMIT 30`,
+                    user.id,
+                  ),
+
+                allBets:
+                  q(
+                    `SELECT
+                       b.stake,
+                       b.status,
+                       b.mult,
+                       b.payout,
+                       u.username
+                     FROM bets b
+                     JOIN users u
+                       ON u.id=b.user_id
+                     WHERE round_id=?
+                     ORDER BY b.id DESC
+                     LIMIT 50`,
+                    round.id,
+                  ),
+              };
+            } else if (
+              route ===
+                "/api/bet" &&
+              post
             ) {
-              fail(
-                "Betting closed. Wait for the next round.",
-              );
-            }
-
-            const stake =
-              amount(
-                data.amount,
-              );
-
-            if (
-              ![1, 2].includes(
-                data.panel,
-              )
-            ) {
-              fail(
-                "Invalid bet panel",
-              );
-            }
-
-            tx(() => {
               if (
-                one(
-                  `SELECT id FROM bets
-                   WHERE user_id=?
-                   AND round_id=?
-                   AND panel=?`,
-                  user.id,
-                  round.id,
+                round.phase !==
+                  "WAITING" ||
+                data.roundId !==
+                  round.id
+              ) {
+                fail(
+                  "Betting closed. Wait for the next round.",
+                );
+              }
+
+              const stake =
+                amount(
+                  data.amount,
+                );
+
+              if (
+                ![
+                  1,
+                  2,
+                ].includes(
                   data.panel,
                 )
               ) {
                 fail(
-                  "Only one bet per panel per round.",
+                  "Invalid bet panel",
                 );
               }
 
-              if (
-                one(
-                  "SELECT balance FROM users WHERE id=?",
-                  user.id,
-                ).balance <
-                stake
-              ) {
-                fail(
-                  "Low demo balance.",
-                );
-              }
-
-              credit(
-                user.id,
-                -stake,
-                "Demo stake",
-              );
-
-              run(
-                `INSERT INTO bets(
-                  user_id,round_id,panel,stake
-                ) VALUES(?,?,?,?)`,
-                user.id,
-                round.id,
-                data.panel,
-                stake,
-              );
-            });
-          } else if (
-            route ===
-              "/api/cashout" &&
-            post
-          ) {
-            advance();
-
-            if (
-              round.phase !==
-              "FLYING"
-            ) {
-              fail(
-                "Cash out unavailable.",
-              );
-            }
-
-            tx(() => {
-              const bet =
-                one(
-                  `SELECT * FROM bets
-                   WHERE id=?
-                   AND user_id=?
-                   AND round_id=?
-                   AND status='ACTIVE'`,
-                  Number(
-                    data.id,
-                  ),
-                  user.id,
-                  round.id,
-                );
-
-              if (!bet) {
-                fail(
-                  "Bet already settled or missing.",
-                );
-              }
-
-              const current =
-                multiplier();
-
-              if (
-                current >=
-                round.crash
-              ) {
-                fail(
-                  "Round ended.",
-                );
-              }
-
-              const payout =
-                Math.floor(
-                  bet.stake *
-                    current,
-                );
-
-              run(
-                `UPDATE bets
-                 SET status='WON',
-                 payout=?,mult=?
-                 WHERE id=?`,
-                payout,
-                current,
-                bet.id,
-              );
-
-              credit(
-                user.id,
-                payout,
-                "Demo cash out",
-              );
-            });
-          } else if (
-            route ===
-              "/api/request" &&
-            post
-          ) {
-            const coins =
-              amount(
-                data.amount,
-              );
-
-            if (
-              ![
-                "DEPOSIT",
-                "WITHDRAWAL",
-              ].includes(
-                data.type,
-              )
-            ) {
-              fail(
-                "Invalid type",
-              );
-            }
-
-            const note =
-              String(
-                data.note ||
-                  "",
-              ).trim();
-
-            if (
-              !note ||
-              note.length >
-                300
-            ) {
-              fail(
-                "Enter a demo reference/note, up to 300 characters.",
-              );
-            }
-
-            tx(() => {
-              if (
-                data.type ===
-                "WITHDRAWAL"
-              ) {
-                if (
+              tx(() => {
+                const duplicate =
                   one(
-                    "SELECT balance FROM users WHERE id=?",
+                    `SELECT id
+                     FROM bets
+                     WHERE user_id=?
+                     AND round_id=?
+                     AND panel=?`,
                     user.id,
-                  ).balance <
-                  coins
+                    round.id,
+                    data.panel,
+                  );
+
+                if (
+                  duplicate
+                ) {
+                  fail(
+                    "Only one bet per panel per round.",
+                  );
+                }
+
+                const balance =
+                  one(
+                    `SELECT balance
+                     FROM users
+                     WHERE id=?`,
+                    user.id,
+                  ).balance;
+
+                if (
+                  balance <
+                  stake
                 ) {
                   fail(
                     "Low demo balance.",
@@ -1276,162 +1378,278 @@ const server = http.createServer(
 
                 credit(
                   user.id,
-                  -coins,
-                  "Demo withdrawal held",
+                  -stake,
+                  "Demo stake",
                 );
-              }
 
-              run(
-                `INSERT INTO requests(
-                  user_id,type,amount,note
-                ) VALUES(?,?,?,?)`,
-                user.id,
-                data.type,
-                coins,
-                note,
-              );
-            });
-          } else if (
-            route ===
-              "/api/account" &&
-            !post
-          ) {
-            output = {
-              requests: q(
-                `SELECT * FROM requests
-                 WHERE user_id=?
-                 ORDER BY id DESC LIMIT 30`,
-                user.id,
-              ),
-              ledger: q(
-                `SELECT * FROM ledger
-                 WHERE user_id=?
-                 ORDER BY id DESC LIMIT 50`,
-                user.id,
-              ),
-            };
-          } else if (
-            route ===
-              "/api/promo" &&
-            post
-          ) {
-            tx(() => {
-              const currentSettings =
-                settings();
-
-              const code =
-                String(
-                  data.code ||
-                    "",
-                )
-                  .trim()
-                  .toUpperCase();
+                run(
+                  `INSERT INTO bets(
+                    user_id,
+                    round_id,
+                    panel,
+                    stake
+                  ) VALUES(?,?,?,?)`,
+                  user.id,
+                  round.id,
+                  data.panel,
+                  stake,
+                );
+              });
+            } else if (
+              route ===
+                "/api/cashout" &&
+              post
+            ) {
+              advance();
 
               if (
-                code !==
-                currentSettings.promoCode
+                round.phase !==
+                "FLYING"
               ) {
                 fail(
-                  "Invalid promo code",
+                  "Cash out unavailable.",
                 );
               }
 
-              if (
-                one(
-                  `SELECT * FROM claims
-                   WHERE user_id=? AND code=?`,
+              tx(() => {
+                const bet =
+                  one(
+                    `SELECT *
+                     FROM bets
+                     WHERE id=?
+                     AND user_id=?
+                     AND round_id=?
+                     AND status='ACTIVE'`,
+                    Number(
+                      data.id,
+                    ),
+                    user.id,
+                    round.id,
+                  );
+
+                if (
+                  !bet
+                ) {
+                  fail(
+                    "Bet already settled or missing.",
+                  );
+                }
+
+                const current =
+                  multiplier();
+
+                if (
+                  current >=
+                  round.crash
+                ) {
+                  fail(
+                    "Round ended.",
+                  );
+                }
+
+                const payout =
+                  Math.floor(
+                    bet.stake *
+                    current,
+                  );
+
+                run(
+                  `UPDATE bets
+                   SET status='WON',
+                       payout=?,
+                       mult=?
+                   WHERE id=?`,
+                  payout,
+                  current,
+                  bet.id,
+                );
+
+                credit(
+                  user.id,
+                  payout,
+                  "Demo cash out",
+                );
+              });
+            } else if (
+              route ===
+                "/api/request" &&
+              post
+            ) {
+              output =
+                features.customerRequest(
+                  data,
+                  user,
+                );
+            } else if (
+              route ===
+                "/api/password" &&
+              post
+            ) {
+              output =
+                features.changePassword(
+                  data,
+                  user,
+                );
+            } else if (
+              route ===
+                "/api/account" &&
+              !post
+            ) {
+              output = {
+                requests:
+                  q(
+                    `SELECT *
+                     FROM requests
+                     WHERE user_id=?
+                     ORDER BY id DESC
+                     LIMIT 30`,
+                    user.id,
+                  ),
+
+                ledger:
+                  q(
+                    `SELECT *
+                     FROM ledger
+                     WHERE user_id=?
+                     ORDER BY id DESC
+                     LIMIT 50`,
+                    user.id,
+                  ),
+              };
+            } else if (
+              route ===
+                "/api/promo" &&
+              post
+            ) {
+              tx(() => {
+                const currentSettings =
+                  settings();
+
+                const code =
+                  String(
+                    data.code ||
+                      "",
+                  )
+                    .trim()
+                    .toUpperCase();
+
+                if (
+                  code !==
+                  currentSettings.promoCode
+                ) {
+                  fail(
+                    "Invalid promo code",
+                  );
+                }
+
+                const claimed =
+                  one(
+                    `SELECT *
+                     FROM claims
+                     WHERE user_id=?
+                     AND code=?`,
+                    user.id,
+                    code,
+                  );
+
+                if (
+                  claimed
+                ) {
+                  fail(
+                    "Code already used.",
+                  );
+                }
+
+                const deposit =
+                  one(
+                    `SELECT *
+                     FROM requests
+                     WHERE user_id=?
+                     AND type='DEPOSIT'
+                     AND status='SUCCESS'
+                     ORDER BY id
+                     LIMIT 1`,
+                    user.id,
+                  );
+
+                if (
+                  !deposit
+                ) {
+                  fail(
+                    "An approved demo deposit is required first.",
+                  );
+                }
+
+                run(
+                  "INSERT INTO claims VALUES(?,?)",
                   user.id,
                   code,
-                )
-              ) {
-                fail(
-                  "Code already used.",
                 );
-              }
 
-              const deposit =
-                one(
-                  `SELECT * FROM requests
-                   WHERE user_id=?
-                   AND type='DEPOSIT'
-                   AND status='SUCCESS'
-                   ORDER BY id LIMIT 1`,
+                const bonus =
+                  Math.floor(
+                    (
+                      deposit.amount *
+                      Number(
+                        currentSettings.promo,
+                      )
+                    ) / 100,
+                  );
+
+                credit(
                   user.id,
+                  bonus,
+                  "Promo demo bonus",
                 );
-
-              if (
-                !deposit
-              ) {
-                fail(
-                  "An approved demo deposit is required first.",
-                );
-              }
-
-              run(
-                "INSERT INTO claims VALUES(?,?)",
-                user.id,
-                code,
+              });
+            } else {
+              fail(
+                "Not found",
+                404,
               );
-
-              credit(
-                user.id,
-                Math.floor(
-                  (deposit.amount *
-                    Number(
-                      currentSettings.promo,
-                    )) /
-                    100,
-                ),
-                "Promo demo bonus",
-              );
-            });
-          } else {
-            fail(
-              "Not found",
-              404,
-            );
+            }
           }
         }
-      }
 
-      res.end(
-        JSON.stringify(
-          output,
-        ),
-      );
-    } catch (error) {
-      res.statusCode =
-        error.status ||
-        500;
-
-      res.setHeader(
-        "Content-Type",
-        "application/json",
-      );
-
-      res.end(
-        JSON.stringify({
-          error: error.status
-            ? error.message
-            : "Server error. Please retry.",
-        }),
-      );
-
-      if (
-        !error.status
-      ) {
-        console.error(
-          error.message,
+        res.end(
+          JSON.stringify(
+            output,
+          ),
         );
+      } catch (error) {
+        res.statusCode =
+          error.status ||
+          500;
+
+        res.setHeader(
+          "Content-Type",
+          "application/json",
+        );
+
+        res.end(
+          JSON.stringify({
+            error:
+              error.status
+                ? error.message
+                : "Server error. Please retry.",
+          }),
+        );
+
+        if (
+          !error.status
+        ) {
+          console.error(
+            error.message,
+          );
+        }
       }
-    }
-  },
-);
+    },
+  );
 
 server.listen(
   Number(
     process.env.PORT ||
-      3000,
+    3000,
   ),
   "0.0.0.0",
   () => {
