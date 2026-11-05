@@ -7,7 +7,7 @@
 
   font-family: Arial, Helvetica, sans-serif;
   color: var(--white);
-  background: var(--black);
+  background: #000000;
   color-scheme: dark;
 }
 
@@ -129,6 +129,8 @@ p {
   font-weight: bold;
 }
 
+/* Brand */
+
 .brand {
   display: flex;
   align-items: center;
@@ -152,6 +154,8 @@ p {
   font-size: 33px;
   font-style: italic;
 }
+
+/* Welcome page */
 
 .welcome {
   min-height: 100svh;
@@ -256,6 +260,8 @@ p {
   margin-top: 12px;
 }
 
+/* Customer game */
+
 .game {
   max-width: 850px;
   margin: auto;
@@ -348,6 +354,8 @@ p {
   font-size: 17px;
 }
 
+/* Flight area */
+
 .chart {
   height: 290px;
   position: relative;
@@ -390,6 +398,7 @@ p {
   right: 3%;
   top: 30%;
   width: 25%;
+
   transition:
     transform 1s,
     opacity 0.3s;
@@ -433,6 +442,8 @@ p {
 .roundstatus .crashed {
   color: #cf6190;
 }
+
+/* Betting panels */
 
 .betpanel {
   display: grid;
@@ -520,6 +531,8 @@ p {
   width: 45%;
 }
 
+/* Tables */
+
 .tablewrap {
   overflow: auto;
 }
@@ -561,6 +574,8 @@ td small {
   white-space: nowrap;
 }
 
+/* Footer */
+
 footer {
   display: flex;
   align-items: center;
@@ -577,6 +592,8 @@ footer button {
   background: none;
   border: 1px solid var(--green);
 }
+
+/* Dialogs */
 
 dialog {
   width: min(92vw, 520px);
@@ -639,6 +656,8 @@ dialog::backdrop {
   opacity: 1;
 }
 
+/* Admin login */
+
 .adminlogin {
   max-width: 400px;
   margin: 15vh auto;
@@ -653,6 +672,8 @@ dialog::backdrop {
 .adminlogin h1 {
   font-size: 23px;
 }
+
+/* Admin layout */
 
 .adminshell {
   display: grid;
@@ -737,6 +758,8 @@ dialog::backdrop {
   min-width: 0;
 }
 
+/* Admin statistics */
+
 .stats {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -814,6 +837,162 @@ dialog::backdrop {
   color: #9d1648;
 }
 
+/* Select fields */
+
+select {
+  font: inherit;
+  display: block;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #536165;
+  border-radius: 8px;
+  background: #0d1112;
+  color: white;
+  margin: 8px 0 18px;
+}
+
+.adminmain select {
+  background: white;
+  color: #1b252a;
+  border-color: #b7c7cc;
+}
+
+.spaced {
+  margin-top: 24px;
+}
+
+/* Deposit bank details and images */
+
+.bankdetails {
+  border: 1px solid #385255;
+  border-radius: 10px;
+  padding: 16px;
+  margin: 12px 0 20px;
+  overflow-wrap: anywhere;
+}
+
+.bankdetails p {
+  margin-bottom: 9px;
+}
+
+.qrpreview {
+  display: block;
+  background: white;
+  object-fit: contain;
+  max-width: 100%;
+  width: 220px;
+  max-height: 270px;
+  padding: 8px;
+  margin: 14px auto;
+}
+
+.proofpreview {
+  display: block;
+  max-width: 100%;
+  max-height: 350px;
+  object-fit: contain;
+  background: white;
+  margin: 15px auto;
+}
+
+.checkrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 15px 0;
+}
+
+.checkrow input {
+  width: auto;
+  margin: 0;
+}
+
+.portalLinks a {
+  color: #007e84;
+  overflow-wrap: anywhere;
+}
+
+.adminlogin a,
+dialog a {
+  color: var(--green);
+}
+
+.adminmain .portalLinks {
+  margin-bottom: 20px;
+}
+
+input[type="file"] {
+  padding: 10px;
+  font-size: 13px;
+}
+
+/* Admin notifications and actions */
+
+.navcount {
+  display: inline-block;
+  min-width: 22px;
+  padding: 3px 6px;
+  background: var(--wine);
+  border-radius: 12px;
+  font-size: 11px;
+}
+
+.actionbuttons {
+  min-width: 210px;
+}
+
+.actionbuttons button {
+  margin: 3px;
+}
+
+.requestfilters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 15px;
+}
+
+.requestfilters h2 {
+  margin-right: auto;
+}
+
+.requestfilters label {
+  min-width: 150px;
+}
+
+.requestfilters select {
+  margin-bottom: 8px;
+}
+
+#newrequest {
+  margin-bottom: 20px;
+}
+
+/* Random / Admin Control mode */
+
+.modebanner {
+  padding: 10px 14px;
+  border: 1px solid var(--green);
+  border-radius: 8px;
+  background: #09282b;
+  color: white;
+  font-size: 12px;
+  line-height: 1.5;
+  margin-top: 14px;
+}
+
+.adminmain .modebanner {
+  background: #e0f7f7;
+  color: #134145;
+}
+
+.game .modebanner {
+  font-size: 10px;
+  letter-spacing: 0.4px;
+}
+
+/* Flight animation */
+
 @keyframes float {
   50% {
     transform:
@@ -822,11 +1001,15 @@ dialog::backdrop {
   }
 }
 
+/* Desktop */
+
 @media (min-width: 1000px) {
   .game {
     max-width: 860px;
   }
 }
+
+/* Tablet */
 
 @media (max-width: 1050px) {
   .adminshell {
@@ -845,6 +1028,8 @@ dialog::backdrop {
     grid-template-columns: 1fr;
   }
 }
+
+/* Mobile */
 
 @media (max-width: 600px) {
   .welcome {
@@ -998,6 +1183,10 @@ dialog::backdrop {
     padding: 16px;
   }
 
+  .adminmain > header {
+    flex-wrap: wrap;
+  }
+
   .adminmain > header h1 {
     font-size: 22px;
   }
@@ -1025,7 +1214,17 @@ dialog::backdrop {
   .bonusrow {
     gap: 8px;
   }
+
+  .portalLinks p {
+    font-size: 13px;
+  }
+
+  .qrpreview {
+    width: 180px;
+  }
 }
+
+/* Reduced motion */
 
 @media (prefers-reduced-motion: reduce) {
   * {
