@@ -2,9 +2,10 @@ import {
   flightPoint,
   elapsedAt,
   GameAudio,
-} from "/flight.js?v=20261106-customerpromo";
+} from "/flight.js?v=20261106-twoplans";
 
-const $ = (selector) => document.querySelector(selector);
+const $ = (selector) =>
+  document.querySelector(selector);
 
 const app = $("#app");
 const modal = $("#modal");
@@ -54,41 +55,46 @@ function startFlight() {
       elapsedAt(
         snapshot,
         flightReceivedAt,
-        performance.now()
-      )
+        performance.now(),
+      ),
     );
 
-    plane.style.left = `${(point.x / 600) * 100}%`;
-    plane.style.top = `${(point.y / 250) * 100}%`;
+    plane.style.left =
+      `${point.x / 600 * 100}%`;
+
+    plane.style.top =
+      `${point.y / 250 * 100}%`;
 
     plane.style.transform =
       `translate(-50%, -50%) rotate(${point.angle.toFixed(2)}deg)`;
 
     plane.classList.toggle(
       "flying",
-      snapshot.phase === "FLYING"
+      snapshot.phase === "FLYING",
     );
 
     plane.classList.toggle(
       "gone",
-      snapshot.phase === "CRASHED"
+      snapshot.phase === "CRASHED",
     );
 
     trail.setAttribute(
       "d",
       snapshot.phase === "WAITING"
         ? "M 70 215"
-        : point.path
+        : point.path,
     );
 
     if (
       document.hidden ||
-      performance.now() - flightReceivedAt > 2000
+      performance.now() -
+        flightReceivedAt > 2000
     ) {
       gameAudio.stopEngine();
     }
 
-    flightFrame = requestAnimationFrame(draw);
+    flightFrame =
+      requestAnimationFrame(draw);
   }
 
   draw();
@@ -104,13 +110,17 @@ const esc = (value) =>
         ">": "&gt;",
         '"': "&quot;",
         "'": "&#39;",
-      })[character]
+      })[character],
   );
 
 const num = (value) =>
-  "₹" + Number(value || 0).toLocaleString("en-IN");
+  "₹" +
+  Number(value || 0).toLocaleString(
+    "en-IN",
+  );
 
-const pct = (key) => esc(config[key] ?? 10);
+const pct = (key) =>
+  esc(config[key] ?? 10);
 
 function toast(message) {
   $("#toast").textContent = message;
@@ -122,17 +132,23 @@ function toast(message) {
 }
 
 async function api(route, data) {
-  const response = await fetch("/api/" + route, {
-    method: data ? "POST" : "GET",
+  const response = await fetch(
+    "/api/" + route,
+    {
+      method: data ? "POST" : "GET",
 
-    headers: data
-      ? {
-          "Content-Type": "application/json",
-        }
-      : {},
+      headers: data
+        ? {
+            "Content-Type":
+              "application/json",
+          }
+        : {},
 
-    body: data ? JSON.stringify(data) : undefined,
-  });
+      body: data
+        ? JSON.stringify(data)
+        : undefined,
+    },
+  );
 
   const result = await response.json();
 
@@ -180,16 +196,14 @@ function bonuses() {
 
   return `
     <div class="bonusrow">
-      ${items
-        .map(
-          ([key, title]) => `
-            <div class="bonus">
-              <b>${pct(key)}%</b>
-              <span>${title}</span>
-            </div>
-          `
-        )
-        .join("")}
+      ${items.map(
+        ([key, title]) => `
+          <div class="bonus">
+            <b>${pct(key)}%</b>
+            <span>${title}</span>
+          </div>
+        `,
+      ).join("")}
     </div>
   `;
 }
@@ -220,7 +234,7 @@ function support() {
     window.open(
       config.support,
       "_blank",
-      "noopener,noreferrer"
+      "noopener,noreferrer",
     );
   } else {
     show(
@@ -230,7 +244,7 @@ function support() {
           The administrator has not
           configured a support link yet.
         </p>
-      `
+      `,
     );
   }
 }
@@ -254,11 +268,18 @@ function show(title, html) {
   }
 }
 
-modal.addEventListener("click", (event) => {
-  if (event.target.closest("[data-close]")) {
-    modal.close();
-  }
-});
+modal.addEventListener(
+  "click",
+  (event) => {
+    if (
+      event.target.closest(
+        "[data-close]",
+      )
+    ) {
+      modal.close();
+    }
+  },
+);
 
 function welcome() {
   stopFlight();
@@ -310,9 +331,7 @@ function signupWhatsApp() {
   try {
     url = new URL(String(config.support || ""));
   } catch {
-    toast(
-      "Admin must configure a WhatsApp support link before signup."
-    );
+    toast("Admin must configure a WhatsApp support link before signup.");
     return;
   }
 
@@ -324,19 +343,15 @@ function signupWhatsApp() {
     url.password ||
     !/^\/[1-9][0-9]{7,14}\/?$/.test(url.pathname)
   ) {
-    toast(
-      "Admin must configure a WhatsApp link with country code, such as https://wa.me/91XXXXXXXXXX."
-    );
+    toast("Admin must configure a WhatsApp link with country code, such as https://wa.me/91XXXXXXXXXX.");
     return;
   }
 
   const chat = new URL("https://wa.me" + url.pathname);
-
   chat.searchParams.set(
     "text",
-    "Hello, I would like to request a Super Fast Aviator customer ID."
+    "Hello, I would like to request a Super Fast Aviator customer ID.",
   );
-
   window.location.assign(chat.href);
 }
 
@@ -392,58 +407,64 @@ function auth(mode = "login") {
           id="formerror"
         ></p>
       </form>
-    `
+    `,
   );
 
-  $("#authform").onsubmit = async (event) => {
-    event.preventDefault();
+  $("#authform").onsubmit =
+    async (event) => {
+      event.preventDefault();
 
-    const button = event.target.querySelector("button");
-
-    if (button.disabled) {
-      return;
-    }
-
-    button.disabled = true;
-
-    try {
-      const data = Object.fromEntries(
-        new FormData(event.target)
-      );
-
-      data.username = String(data.username || "")
-        .trim()
-        .toLowerCase();
-
-      if (!/^[a-z0-9._-]{4,30}$/.test(data.username)) {
-        throw new Error(
-          "Customer ID must be 4–30 English letters, numbers, dots, underscores or hyphens. Do not use spaces inside the ID."
+      const button =
+        event.target.querySelector(
+          "button",
         );
-      }
 
-      const result = await api("login", data);
-
-      me = result.user;
-      modal.close();
-
-      if (me.mustChangePassword) {
-        changePassword(true);
+      if (button.disabled) {
         return;
       }
 
-      renderGame();
-      await refresh();
-    } catch (error) {
-      if ($("#formerror")) {
-        $("#formerror").textContent = error.message;
+      button.disabled = true;
+
+      try {
+        const data =
+          Object.fromEntries(
+            new FormData(event.target),
+          );
+
+        data.username = String(data.username || "").trim().toLowerCase();
+
+        if (!/^[a-z0-9._-]{4,30}$/.test(data.username)) {
+          throw new Error(
+            "Customer ID must be 4–30 English letters, numbers, dots, underscores or hyphens. Do not use spaces inside the ID."
+          );
+        }
+
+        const result = await api("login", data);
+
+        me = result.user;
+        modal.close();
+
+        if (me.mustChangePassword) {
+          changePassword(true);
+          return;
+        }
+
+        renderGame();
+        await refresh();
+      } catch (error) {
+        if ($("#formerror")) {
+          $("#formerror").textContent =
+            error.message;
+        }
+      } finally {
+        button.disabled = false;
       }
-    } finally {
-      button.disabled = false;
-    }
-  };
+    };
 }
 
-function changePassword(required = false) {
+function changePassword(
+  required = false,
+) {
   show(
     required
       ? "Change Temporary Password"
@@ -506,43 +527,50 @@ function changePassword(required = false) {
           id="formerror"
         ></p>
       </form>
-    `
+    `,
   );
 
-  $("#passwordform").onsubmit = async (event) => {
-    event.preventDefault();
+  $("#passwordform").onsubmit =
+    async (event) => {
+      event.preventDefault();
 
-    const button = event.target.querySelector("button");
+      const button =
+        event.target.querySelector(
+          "button",
+        );
 
-    if (button.disabled) {
-      return;
-    }
-
-    button.disabled = true;
-
-    try {
-      await api(
-        "password",
-        Object.fromEntries(new FormData(event.target))
-      );
-
-      me = null;
-      state = null;
-
-      modal.close();
-      welcome();
-
-      toast(
-        "Password changed. Log in with the new password."
-      );
-    } catch (error) {
-      if ($("#formerror")) {
-        $("#formerror").textContent = error.message;
+      if (button.disabled) {
+        return;
       }
-    } finally {
-      button.disabled = false;
-    }
-  };
+
+      button.disabled = true;
+
+      try {
+        await api(
+          "password",
+          Object.fromEntries(
+            new FormData(event.target),
+          ),
+        );
+
+        me = null;
+        state = null;
+
+        modal.close();
+        welcome();
+
+        toast(
+          "Password changed. Log in with the new password.",
+        );
+      } catch (error) {
+        if ($("#formerror")) {
+          $("#formerror").textContent =
+            error.message;
+        }
+      } finally {
+        button.disabled = false;
+      }
+    };
 }
 
 function panel(number) {
@@ -587,15 +615,13 @@ function panel(number) {
         </div>
 
         <div class="quick">
-          ${[10, 100, 500, 1000]
-            .map(
-              (coins) => `
-                <button
-                  data-quick="${number},${coins}"
-                >${coins}</button>
-              `
-            )
-            .join("")}
+          ${[10, 100, 500, 1000].map(
+            (coins) => `
+              <button
+                data-quick="${number},${coins}"
+              >${coins}</button>
+            `,
+          ).join("")}
         </div>
       </div>
 
@@ -768,7 +794,7 @@ function renderGame() {
 
     $("#menutoggle").setAttribute(
       "aria-expanded",
-      String(!menu.hidden)
+      String(!menu.hidden),
     );
   };
 }
@@ -795,27 +821,30 @@ async function refresh() {
     state = snapshot;
     me = state.user;
 
-    $("#balance").textContent = num(me.balance);
+    $("#balance").textContent =
+      num(me.balance);
 
     $("#history").innerHTML =
-      state.history
-        .map(
-          (item, index) => `
-            <span
-              class="${index % 2 ? "wine" : "green"}"
-              title="${
-                item.mode === "ADMIN"
-                  ? "Admin-Controlled Demo"
-                  : "Random Demo"
-              }"
-            >
-              ${item.mult.toFixed(2)}x${
-                item.mode === "ADMIN" ? " · A" : ""
-              }
-            </span>
-          `
-        )
-        .join("") ||
+      state.history.map(
+        (item, index) => `
+          <span
+            class="${
+              index % 2 ? "wine" : "green"
+            }"
+            title="${
+              ["ADMIN", "ADMIN2"].includes(item.mode)
+                ? "Admin-Controlled Demo"
+                : "Random Demo"
+            }"
+          >
+            ${item.mult.toFixed(2)}x${
+              ["ADMIN", "ADMIN2"].includes(item.mode)
+                ? " · A"
+                : ""
+            }
+          </span>
+        `,
+      ).join("") ||
       "<span>First demo round</span>";
 
     const current = state.round;
@@ -834,10 +863,11 @@ async function refresh() {
 
     $("#mult").classList.toggle(
       "crashed",
-      current.phase === "CRASHED"
+      current.phase === "CRASHED",
     );
 
-    $("#roundid").textContent = "ROUND #" + current.id;
+    $("#roundid").textContent =
+      "ROUND #" + current.id;
 
     flightSnapshot = current;
     flightReceivedAt = performance.now();
@@ -850,14 +880,17 @@ async function refresh() {
       const bet = state.bets.find(
         (item) =>
           item.round_id === current.id &&
-          item.panel === number
+          item.panel === number,
       );
 
-      const button = $(`[data-bet="${number}"]`);
+      const button = $(
+        `[data-bet="${number}"]`,
+      );
 
       button.classList.toggle(
         "wine",
-        !!bet && current.phase === "FLYING"
+        !!bet &&
+          current.phase === "FLYING",
       );
 
       button.disabled =
@@ -883,7 +916,9 @@ async function refresh() {
 
           <small>
             ${num(
-              Math.floor(bet.stake * current.mult)
+              Math.floor(
+                bet.stake * current.mult,
+              ),
             )}
             AMOUNT
           </small>
@@ -920,7 +955,9 @@ async function refresh() {
 
     for (
       const button of
-      document.querySelectorAll("[data-bet]")
+      document.querySelectorAll(
+        "[data-bet]",
+      )
     ) {
       button.disabled = true;
     }
@@ -951,40 +988,39 @@ function renderBets() {
         </tr>
       `;
 
-  const rows = tab === "ALL"
-    ? state.allBets
-    : state.bets;
+  const rows =
+    tab === "ALL"
+      ? state.allBets
+      : state.bets;
 
   $("#betrows").innerHTML =
-    rows
-      .map(
-        (item) => `
-          <tr>
-            <td>
-              ${esc(
-                tab === "ALL"
-                  ? item.username
-                  : "#" + item.round_id
-              )}
-            </td>
+    rows.map(
+      (item) => `
+        <tr>
+          <td>
+            ${esc(
+              tab === "ALL"
+                ? item.username
+                : "#" + item.round_id,
+            )}
+          </td>
 
-            <td>${num(item.stake)}</td>
+          <td>${num(item.stake)}</td>
 
-            <td>
-              <span class="pill">
-                ${esc(item.status)}
+          <td>
+            <span class="pill">
+              ${esc(item.status)}
 
-                ${
-                  item.payout
-                    ? " · " + num(item.payout)
-                    : ""
-                }
-              </span>
-            </td>
-          </tr>
-        `
-      )
-      .join("") ||
+              ${
+                item.payout
+                  ? " · " + num(item.payout)
+                  : ""
+              }
+            </span>
+          </td>
+        </tr>
+      `,
+    ).join("") ||
     `
       <tr>
         <td
@@ -1002,20 +1038,27 @@ async function readImage(file) {
 
   if (file.size > 1500000) {
     throw new Error(
-      "Proof image must be under 1.5 MB."
+      "Proof image must be under 1.5 MB.",
     );
   }
 
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
+  return new Promise(
+    (resolve, reject) => {
+      const reader = new FileReader();
 
-    reader.onload = () => resolve(reader.result);
+      reader.onload = () =>
+        resolve(reader.result);
 
-    reader.onerror = () =>
-      reject(new Error("Unable to read image"));
+      reader.onerror = () =>
+        reject(
+          new Error(
+            "Unable to read image",
+          ),
+        );
 
-    reader.readAsDataURL(file);
-  });
+      reader.readAsDataURL(file);
+    },
+  );
 }
 
 async function request(type) {
@@ -1044,7 +1087,7 @@ async function request(type) {
               <b>${label}:</b>
               ${esc(value)}
             </p>
-          `
+          `,
         )
         .join("")}
 
@@ -1053,7 +1096,9 @@ async function request(type) {
           ? `
             <img
               class="qrpreview"
-              src="/api/media/${esc(config.qrImageId)}"
+              src="/api/media/${esc(
+                config.qrImageId,
+              )}"
               alt="Admin deposit QR"
             >
           `
@@ -1063,7 +1108,7 @@ async function request(type) {
       <p>
         ${esc(
           config.depositInstructions ||
-            "Contact support if deposit details have not been configured."
+            "Contact support if deposit details have not been configured.",
         )}
       </p>
     </div>
@@ -1195,68 +1240,77 @@ async function request(type) {
           id="formerror"
         ></p>
       </form>
-    `
+    `,
   );
 
-  $("#reqform").onsubmit = async (event) => {
-    event.preventDefault();
+  $("#reqform").onsubmit =
+    async (event) => {
+      event.preventDefault();
 
-    const button = event.target.querySelector("button");
+      const button =
+        event.target.querySelector(
+          "button",
+        );
 
-    if (button.disabled) {
-      return;
-    }
-
-    button.disabled = true;
-
-    try {
-      const formData = Object.fromEntries(
-        new FormData(event.target)
-      );
-
-      const proof = deposit
-        ? await readImage(
-            event.target.querySelector(
-              "[name=proofFile]"
-            ).files[0]
-          )
-        : null;
-
-      const result = await api("request", {
-        type,
-        amount: Number(formData.amount),
-        note: formData.note,
-        utr: formData.utr,
-        proof,
-        holder: formData.holder,
-        bank: formData.bank,
-        account: formData.account,
-        confirmAccount: formData.confirmAccount,
-        ifsc: formData.ifsc,
-      });
-
-      modal.close();
-
-      toast(
-        "Request #" +
-          result.id +
-          " sent to admin — PENDING"
-      );
-
-      await refresh();
-    } catch (error) {
-      if ($("#formerror")) {
-        $("#formerror").textContent = error.message;
+      if (button.disabled) {
+        return;
       }
-    } finally {
-      button.disabled = false;
-    }
-  };
+
+      button.disabled = true;
+
+      try {
+        const formData =
+          Object.fromEntries(
+            new FormData(event.target),
+          );
+
+        const proof = deposit
+          ? await readImage(
+              event.target.querySelector(
+                "[name=proofFile]",
+              ).files[0],
+            )
+          : null;
+
+        const result = await api(
+          "request",
+          {
+            type,
+            amount: Number(formData.amount),
+            note: formData.note,
+            utr: formData.utr,
+            proof,
+            holder: formData.holder,
+            bank: formData.bank,
+            account: formData.account,
+            confirmAccount:
+              formData.confirmAccount,
+            ifsc: formData.ifsc,
+          },
+        );
+
+        modal.close();
+
+        toast(
+          "Request #" +
+            result.id +
+            " sent to admin — PENDING",
+        );
+
+        await refresh();
+      } catch (error) {
+        if ($("#formerror")) {
+          $("#formerror").textContent =
+            error.message;
+        }
+      } finally {
+        button.disabled = false;
+      }
+    };
 }
 
 async function info(kind) {
   config = await api("public");
-
   if (kind === "rules") {
     show(
       "Rules",
@@ -1264,7 +1318,7 @@ async function info(kind) {
         <p class="rules">
           ${esc(config.rules)}
         </p>
-      `
+      `,
     );
   }
 
@@ -1295,24 +1349,15 @@ async function info(kind) {
           Admin enters the bonus amount manually.
           Losing a bet never adds this bonus automatically.
         </p>
-      `
+      `,
     );
   }
 
   if (kind === "promo") {
     const result = await api("me");
-
-    if (
-      !result.user ||
-      result.user.role !== "customer"
-    ) {
-      return;
-    }
-
+    if (!result.user || result.user.role !== "customer") return;
     me = result.user;
-
     const promoCode = me.promoCode || "";
-
     show(
       "Promo Code",
       `
@@ -1333,47 +1378,49 @@ async function info(kind) {
             class="green full"
             ${promoCode ? "" : "disabled"}
           >CHECK CODE</button>
-
-          ${
-            promoCode
-              ? ""
-              : '<p class="muted">Admin has not assigned a promo code to your ID yet. Contact Customer Support.</p>'
-          }
+          ${promoCode ? "" : '<p class="muted">Admin has not assigned a promo code to your ID yet. Contact Customer Support.</p>'}
 
           <p
             class="error"
             id="formerror"
           ></p>
         </form>
-      `
+      `,
     );
 
-    $("#promoform").onsubmit = async (event) => {
-      event.preventDefault();
+    $("#promoform").onsubmit =
+      async (event) => {
+        event.preventDefault();
 
-      const button = event.target.querySelector("button");
+        const button =
+          event.target.querySelector(
+            "button",
+          );
 
-      button.disabled = true;
+        button.disabled = true;
 
-      try {
-        const result = await api("promo", {
-          code: new FormData(event.target).get("code"),
-        });
+        try {
+          const result = await api(
+            "promo",
+            {
+              code: new FormData(
+                event.target,
+              ).get("code"),
+            },
+          );
 
-        modal.close();
+          modal.close();
 
-        toast(
-          result.message ||
-            "Contact admin for the promo bonus."
-        );
+          toast(result.message || "Contact admin for the promo bonus.");
 
-        await refresh();
-      } catch (error) {
-        $("#formerror").textContent = error.message;
-      } finally {
-        button.disabled = false;
-      }
-    };
+          await refresh();
+        } catch (error) {
+          $("#formerror").textContent =
+            error.message;
+        } finally {
+          button.disabled = false;
+        }
+      };
   }
 }
 
@@ -1394,43 +1441,43 @@ async function account() {
           </tr>
 
           ${
-            data.requests
-              .map(
-                (item) => `
-                  <tr>
-                    <td>
-                      ${esc(item.type)}
-                    </td>
+            data.requests.map(
+              (item) => `
+                <tr>
+                  <td>
+                    ${esc(item.type)}
+                  </td>
 
-                    <td>
-                      ${num(item.amount)}
-                    </td>
+                  <td>
+                    ${num(item.amount)}
+                  </td>
 
-                    <td>
-                      ${esc(item.status)}
+                  <td>
+                    ${esc(item.status)}
 
-                      <small>
-                        ${esc(item.admin_note || "")}
-                      </small>
+                    <small>
+                      ${esc(
+                        item.admin_note || "",
+                      )}
+                    </small>
 
-                      ${
-                        item.proof_id
-                          ? `
-                            <a
-                              href="/api/media/${esc(
-                                item.proof_id
-                              )}"
-                              target="_blank"
-                              rel="noopener"
-                            >View proof</a>
-                          `
-                          : ""
-                      }
-                    </td>
-                  </tr>
-                `
-              )
-              .join("") ||
+                    ${
+                      item.proof_id
+                        ? `
+                          <a
+                            href="/api/media/${esc(
+                              item.proof_id,
+                            )}"
+                            target="_blank"
+                            rel="noopener"
+                          >View proof</a>
+                        `
+                        : ""
+                    }
+                  </td>
+                </tr>
+              `,
+            ).join("") ||
             `
               <tr>
                 <td>No requests yet</td>
@@ -1445,41 +1492,37 @@ async function account() {
       <div class="tablewrap">
         <table>
           ${
-            data.ledger
-              .map(
-                (item) => `
-                  <tr>
-                    <td>
+            data.ledger.map(
+              (item) => `
+                <tr>
+                  <td>
+                    ${esc(String(item.note || "").replace(/\bdemo\s+/gi, "").replace(/^stake\b/i, "Stake").replace(/^cash out\b/i, "Cash out").replace(/^withdrawal\b/i, "Withdrawal"))}
+
+                    <small>
                       ${esc(
-                        String(item.note || "")
-                          .replace(/\bdemo\s+/gi, "")
-                          .replace(/^stake\b/i, "Stake")
-                          .replace(/^cash out\b/i, "Cash out")
-                          .replace(/^withdrawal\b/i, "Withdrawal")
+                        new Date(
+                          item.created.replace(
+                            " ",
+                            "T",
+                          ) + "Z",
+                        ).toLocaleString(
+                          "en-IN",
+                          {
+                            timeZone:
+                              "Asia/Kolkata",
+                          },
+                        ),
                       )}
+                      IST
+                    </small>
+                  </td>
 
-                      <small>
-                        ${esc(
-                          new Date(
-                            item.created.replace(
-                              " ",
-                              "T"
-                            ) + "Z"
-                          ).toLocaleString("en-IN", {
-                            timeZone: "Asia/Kolkata",
-                          })
-                        )}
-                        IST
-                      </small>
-                    </td>
-
-                    <td>
-                      ${num(item.amount)}
-                    </td>
-                  </tr>
-                `
-              )
-              .join("") ||
+                  <td>
+                    ${num(item.amount)}
+                  </td>
+                </tr>
+              `,
+            ).join("") ||
             `
               <tr>
                 <td>No transactions yet</td>
@@ -1488,170 +1531,229 @@ async function account() {
           }
         </table>
       </div>
-    `
+    `,
   );
 }
 
-app.addEventListener("click", async (event) => {
-  const button = event.target.closest("button");
+app.addEventListener(
+  "click",
+  async (event) => {
+    const button =
+      event.target.closest("button");
 
-  if (!button || button.disabled) {
-    return;
-  }
-
-  try {
-    if (button.dataset.auth) {
-      auth(button.dataset.auth);
-    } else if (button.hasAttribute("data-sound")) {
-      await gameAudio.toggle();
-
-      button.textContent = gameAudio.enabled
-        ? "🔊"
-        : "🔇";
-
-      button.title = gameAudio.enabled
-        ? "Sound ON"
-        : "Sound OFF";
-
-      button.setAttribute(
-        "aria-label",
-        gameAudio.enabled
-          ? "Turn sound off"
-          : "Turn sound on"
-      );
-
-      toast(
-        gameAudio.enabled
-          ? "Sound ON"
-          : "Sound OFF"
-      );
-
-      if (gameAudio.enabled) {
-        gameAudio.tone(
-          880,
-          880,
-          0.18,
-          0.08
-        );
-      }
-
-      button.setAttribute(
-        "aria-pressed",
-        String(gameAudio.enabled)
-      );
-
-      if (
-        gameAudio.enabled &&
-        state?.round &&
-        !document.hidden
-      ) {
-        gameAudio.sync(state.round);
-      }
-    } else if (
-      button.hasAttribute("data-support")
+    if (
+      !button ||
+      button.disabled
     ) {
-      support();
-    } else if (
-      button.hasAttribute("data-logout")
-    ) {
-      await api("logout", {});
-
-      me = null;
-      state = null;
-
-      welcome();
-    } else if (
-      button.hasAttribute("data-password")
-    ) {
-      changePassword();
-    } else if (button.dataset.request) {
-      await request(button.dataset.request);
-    } else if (button.dataset.info) {
-      await info(button.dataset.info);
-    } else if (
-      button.hasAttribute("data-account")
-    ) {
-      await account();
-    } else if (button.dataset.step) {
-      const step = Number(button.dataset.step);
-      const number = Math.abs(step);
-      const input = $("#stake" + number);
-
-      input.value = Math.max(
-        10,
-        Math.min(
-          25000,
-          Number(input.value) +
-            (step > 0 ? 10 : -10)
-        )
-      );
-    } else if (button.dataset.quick) {
-      const [number, value] =
-        button.dataset.quick.split(",");
-
-      $("#stake" + number).value = value;
-    } else if (button.dataset.tab) {
-      tab = button.dataset.tab;
-
-      for (
-        const item of
-        document.querySelectorAll("[data-tab]")
-      ) {
-        item.classList.toggle(
-          "green",
-          item === button
-        );
-      }
-
-      renderBets();
-    } else if (button.dataset.bet) {
-      if (!state) {
-        return;
-      }
-
-      busy = true;
-      button.disabled = true;
-
-      const number = Number(button.dataset.bet);
-
-      const bet = state.bets.find(
-        (item) =>
-          item.round_id === state.round.id &&
-          item.panel === number &&
-          item.status === "ACTIVE"
-      );
-
-      try {
-        if (bet) {
-          await api("cashout", {
-            id: bet.id,
-          });
-
-          gameAudio.cashout();
-        } else {
-          await api("bet", {
-            amount: Number(
-              $("#stake" + number).value
-            ),
-            panel: number,
-            roundId: state.round.id,
-          });
-        }
-      } finally {
-        busy = false;
-        await refresh();
-      }
+      return;
     }
-  } catch (error) {
-    toast(error.message);
-  }
-});
+
+    try {
+      if (button.dataset.auth) {
+        auth(button.dataset.auth);
+      } else if (
+        button.hasAttribute(
+          "data-sound",
+        )
+      ) {
+        await gameAudio.toggle();
+
+        button.textContent =
+          gameAudio.enabled
+            ? "🔊"
+            : "🔇";
+
+        button.title =
+          gameAudio.enabled
+            ? "Sound ON"
+            : "Sound OFF";
+
+        button.setAttribute(
+          "aria-label",
+          gameAudio.enabled
+            ? "Turn sound off"
+            : "Turn sound on",
+        );
+
+        toast(
+          gameAudio.enabled
+            ? "Sound ON"
+            : "Sound OFF",
+        );
+
+        if (gameAudio.enabled) {
+          gameAudio.tone(
+            880,
+            880,
+            0.18,
+            0.08,
+          );
+        }
+
+        button.setAttribute(
+          "aria-pressed",
+          String(gameAudio.enabled),
+        );
+
+        if (
+          gameAudio.enabled &&
+          state?.round &&
+          !document.hidden
+        ) {
+          gameAudio.sync(state.round);
+        }
+      } else if (
+        button.hasAttribute(
+          "data-support",
+        )
+      ) {
+        support();
+      } else if (
+        button.hasAttribute(
+          "data-logout",
+        )
+      ) {
+        await api("logout", {});
+
+        me = null;
+        state = null;
+
+        welcome();
+      } else if (
+        button.hasAttribute(
+          "data-password",
+        )
+      ) {
+        changePassword();
+      } else if (
+        button.dataset.request
+      ) {
+        await request(
+          button.dataset.request,
+        );
+      } else if (
+        button.dataset.info
+      ) {
+        await info(button.dataset.info);
+      } else if (
+        button.hasAttribute(
+          "data-account",
+        )
+      ) {
+        await account();
+      } else if (
+        button.dataset.step
+      ) {
+        const step = Number(
+          button.dataset.step,
+        );
+
+        const number =
+          Math.abs(step);
+
+        const input = $(
+          "#stake" + number,
+        );
+
+        input.value = Math.max(
+          10,
+          Math.min(
+            25000,
+            Number(input.value) +
+              (step > 0 ? 10 : -10),
+          ),
+        );
+      } else if (
+        button.dataset.quick
+      ) {
+        const [number, value] =
+          button.dataset.quick.split(",");
+
+        $("#stake" + number).value =
+          value;
+      } else if (
+        button.dataset.tab
+      ) {
+        tab = button.dataset.tab;
+
+        for (
+          const item of
+          document.querySelectorAll(
+            "[data-tab]",
+          )
+        ) {
+          item.classList.toggle(
+            "green",
+            item === button,
+          );
+        }
+
+        renderBets();
+      } else if (
+        button.dataset.bet
+      ) {
+        if (!state) {
+          return;
+        }
+
+        busy = true;
+        button.disabled = true;
+
+        const number = Number(
+          button.dataset.bet,
+        );
+
+        const bet = state.bets.find(
+          (item) =>
+            item.round_id ===
+              state.round.id &&
+            item.panel === number &&
+            item.status === "ACTIVE",
+        );
+
+        try {
+          if (bet) {
+            await api(
+              "cashout",
+              {
+                id: bet.id,
+              },
+            );
+
+            gameAudio.cashout();
+          } else {
+            await api(
+              "bet",
+              {
+                amount: Number(
+                  $(
+                    "#stake" + number,
+                  ).value,
+                ),
+
+                panel: number,
+                roundId: state.round.id,
+              },
+            );
+          }
+        } finally {
+          busy = false;
+          await refresh();
+        }
+      }
+    } catch (error) {
+      toast(error.message);
+    }
+  },
+);
 
 async function init() {
   try {
     config = await api("public");
 
-    me = (await api("me")).user;
+    me = (
+      await api("me")
+    ).user;
 
     if (me?.role === "customer") {
       if (me.mustChangePassword) {
@@ -1678,12 +1780,18 @@ async function init() {
 
 await init();
 
-setInterval(() => refresh(), 500);
+setInterval(
+  () => refresh(),
+  500,
+);
 
-document.addEventListener("visibilitychange", () => {
-  if (!document.hidden) {
-    refresh();
-  } else {
-    gameAudio.reset();
-  }
-});
+document.addEventListener(
+  "visibilitychange",
+  () => {
+    if (!document.hidden) {
+      refresh();
+    } else {
+      gameAudio.reset();
+    }
+  },
+);
