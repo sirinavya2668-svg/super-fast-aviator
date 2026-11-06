@@ -1450,7 +1450,13 @@ async function account() {
                 (item) => `
                   <tr>
                     <td>
-                      ${esc(item.note)}
+                      ${esc(
+                        String(item.note || "")
+                          .replace(/\bdemo\s+/gi, "")
+                          .replace(/^stake\b/i, "Stake")
+                          .replace(/^cash out\b/i, "Cash out")
+                          .replace(/^withdrawal\b/i, "Withdrawal")
+                      )}
 
                       <small>
                         ${esc(
