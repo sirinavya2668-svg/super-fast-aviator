@@ -1,3 +1,5 @@
+import { flightPoint, elapsedAt } from "/flight.js";
+
 const $ = (selector) =>
   document.querySelector(selector);
 
@@ -10,6 +12,77 @@ let state = null;
 let busy = false;
 let tab = "ALL";
 let refreshing = false;
+
+let flightSnapshot = null;
+let flightReceivedAt = 0;
+let flightFrame = 0;
+
+function stopFlight() {
+  if (flightFrame) {
+    cancelAnimationFrame(flightFrame);
+  }
+
+  flightFrame = 0;
+  flightSnapshot = null;
+}
+
+function startFlight() {
+  stopFlight();
+
+  function draw() {
+    const plane = $("#flyingplane");
+    const trail = $("#flighttrail");
+
+    if (!plane || !trail) {
+      stopFlight();
+      return;
+    }
+
+    const snapshot = flightSnapshot || {
+      phase: "WAITING",
+      elapsedMs: 0,
+    };
+
+    const point = flightPoint(
+      elapsedAt(
+        snapshot,
+        flightReceivedAt,
+        performance.now(),
+      ),
+    );
+
+    plane.style.left =
+      `${point.x / 600 * 100}%`;
+
+    plane.style.top =
+      `${point.y / 250 * 100}%`;
+
+    plane.style.transform =
+      `translate(-50%, -50%) rotate(${point.angle.toFixed(2)}deg)`;
+
+    plane.classList.toggle(
+      "flying",
+      snapshot.phase === "FLYING",
+    );
+
+    plane.classList.toggle(
+      "gone",
+      snapshot.phase === "CRASHED",
+    );
+
+    trail.setAttribute(
+      "d",
+      snapshot.phase === "WAITING"
+        ? "M 70 215"
+        : point.path,
+    );
+
+    flightFrame =
+      requestAnimationFrame(draw);
+  }
+
+  draw();
+}
 
 const esc = (value) =>
   String(value ?? "").replace(
@@ -25,6 +98,7 @@ const esc = (value) =>
   );
 
 const num = (value) =>
+  "₹" +
   Number(value || 0).toLocaleString(
     "en-IN",
   );
@@ -49,7 +123,8 @@ async function api(route, data) {
 
       headers: data
         ? {
-            "Content-Type": "application/json",
+            "Content-Type":
+              "application/json",
           }
         : {},
 
@@ -98,18 +173,9 @@ function logo() {
 
 function bonuses() {
   const items = [
-    [
-      "welcome",
-      "WELCOME<br>BONUS",
-    ],
-    [
-      "promo",
-      "PROMO CODE<br>BONUS",
-    ],
-    [
-      "losing",
-      "LOSING<br>BONUS",
-    ],
+    ["welcome", "WELCOME<br>BONUS"],
+    ["promo", "PROMO CODE<br>BONUS"],
+    ["losing", "LOSING<br>BONUS"],
   ];
 
   return `
@@ -181,6 +247,8 @@ modal.addEventListener(
 );
 
 function welcome() {
+  stopFlight();
+
   app.innerHTML = `
     <main class="welcome">
       <header>
@@ -203,9 +271,7 @@ function welcome() {
           >
 
           <small>SUPER FAST</small>
-
           <h1>AVIATOR</h1>
-
           <i></i>
         </div>
 
@@ -217,7 +283,7 @@ function welcome() {
         >24/7 CUSTOMER SUPPORT</button>
 
         <p class="muted demofoot">
-          Virtual demo coins only
+          Simulation balance
         </p>
       </div>
     </main>
@@ -271,9 +337,7 @@ function auth(mode = "login") {
         <button
           class="green full"
           type="submit"
-        >
-          ${signup ? "SIGN UP" : "LOGIN"}
-        </button>
+        >${signup ? "SIGN UP" : "LOGIN"}</button>
 
         <p
           class="error"
@@ -310,23 +374,17 @@ function auth(mode = "login") {
         );
 
         me = result.user;
-
         modal.close();
 
-        if (
-          me.mustChangePassword
-        ) {
+        if (me.mustChangePassword) {
           changePassword(true);
           return;
         }
 
         renderGame();
-
         await refresh();
       } catch (error) {
-        if (
-          $("#formerror")
-        ) {
+        if ($("#formerror")) {
           $("#formerror").textContent =
             error.message;
         }
@@ -336,9 +394,7 @@ function auth(mode = "login") {
     };
 }
 
-function changePassword(
-  required = false,
-) {
+function changePassword(required = false) {
   show(
     required
       ? "Change Temporary Password"
@@ -431,16 +487,13 @@ function changePassword(
         state = null;
 
         modal.close();
-
         welcome();
 
         toast(
           "Password changed. Log in with the new password.",
         );
       } catch (error) {
-        if (
-          $("#formerror")
-        ) {
+        if ($("#formerror")) {
           $("#formerror").textContent =
             error.message;
         }
@@ -459,7 +512,7 @@ function panel(number) {
       <div>
         <div class="paneltitle">
           BET ${number}
-          <span>DEMO COINS</span>
+          <span>AMOUNT</span>
         </div>
 
         <div class="stake">
@@ -468,15 +521,22 @@ function panel(number) {
             aria-label="Decrease bet ${number}"
           >−</button>
 
-          <input
-            id="stake${number}"
-            type="number"
-            min="100"
-            max="25000"
-            step="100"
-            value="100"
-            aria-label="Bet ${number} stake"
-          >
+          <div class="stakevalue">
+            <span
+              class="stakecurrency"
+              aria-hidden="true"
+            >₹</span>
+
+            <input
+              id="stake${number}"
+              type="number"
+              min="10"
+              max="25000"
+              step="1"
+              value="10"
+              aria-label="Bet ${number} stake"
+            >
+          </div>
 
           <button
             data-step="${number}"
@@ -485,12 +545,7 @@ function panel(number) {
         </div>
 
         <div class="quick">
-          ${[
-            100,
-            200,
-            500,
-            1000,
-          ]
+          ${[10, 100, 500, 1000]
             .map(
               (coins) => `
                 <button
@@ -511,6 +566,8 @@ function panel(number) {
 }
 
 function renderGame() {
+  stopFlight();
+
   app.innerHTML = `
     <main class="game">
       <nav class="gamenav">
@@ -554,7 +611,7 @@ function renderGame() {
           </b>
 
           <small>
-            DEMO COINS ·
+            BALANCE ·
             ${esc(me.username)}
           </small>
         </div>
@@ -573,21 +630,25 @@ function renderGame() {
       <section class="chart">
         <div class="chartgrid"></div>
 
-        <svg
-          viewBox="0 0 600 250"
-          preserveAspectRatio="none"
-          class="trail"
-        >
-          <path
-            d="M5 240 Q360 245 560 45"
-          />
-        </svg>
+        <div class="flightplot">
+          <svg
+            viewBox="0 0 600 250"
+            preserveAspectRatio="none"
+            class="trail"
+            aria-hidden="true"
+          >
+            <path
+              id="flighttrail"
+              d="M 70 215"
+            />
+          </svg>
 
-        <img
-          id="flyingplane"
-          src="/plane.svg"
-          alt="Flying airplane"
-        >
+          <img
+            id="flyingplane"
+            src="/plane.svg"
+            alt="Flying airplane"
+          >
+        </div>
 
         <div class="roundstatus">
           <span id="phase">
@@ -595,15 +656,11 @@ function renderGame() {
           </span>
 
           <b id="mult">1.00x</b>
-
-          <small
-            id="roundid"
-          ></small>
+          <small id="roundid"></small>
         </div>
       </section>
 
       ${panel(1)}
-
       ${panel(2)}
 
       <div class="betstabs">
@@ -619,20 +676,13 @@ function renderGame() {
 
       <div class="tablewrap">
         <table>
-          <thead
-            id="bethead"
-          ></thead>
-
-          <tbody
-            id="betrows"
-          ></tbody>
+          <thead id="bethead"></thead>
+          <tbody id="betrows"></tbody>
         </table>
       </div>
 
       <footer>
-        <span>
-          Virtual demo coins only
-        </span>
+        <span>Simulation balance</span>
 
         <button
           data-account
@@ -654,12 +704,12 @@ function renderGame() {
     </main>
   `;
 
-  $("#menutoggle").onclick = () => {
-    const menu =
-      $("#gamemenu");
+  startFlight();
 
-    menu.hidden =
-      !menu.hidden;
+  $("#menutoggle").onclick = () => {
+    const menu = $("#gamemenu");
+
+    menu.hidden = !menu.hidden;
 
     $("#menutoggle").setAttribute(
       "aria-expanded",
@@ -681,13 +731,9 @@ async function refresh() {
   refreshing = true;
 
   try {
-    const snapshot =
-      await api("state");
+    const snapshot = await api("state");
 
-    if (
-      !me ||
-      !$("#balance")
-    ) {
+    if (!me || !$("#balance")) {
       return;
     }
 
@@ -729,8 +775,7 @@ async function refresh() {
         .join("") ||
       "<span>First demo round</span>";
 
-    const current =
-      state.round;
+    const current = state.round;
 
     $("#phase").textContent =
       current.phase === "WAITING"
@@ -742,8 +787,7 @@ async function refresh() {
     $("#mult").textContent =
       current.phase === "WAITING"
         ? "GET READY"
-        : current.mult.toFixed(2) +
-          "x";
+        : current.mult.toFixed(2) + "x";
 
     $("#mult").classList.toggle(
       "crashed",
@@ -753,24 +797,15 @@ async function refresh() {
     $("#roundid").textContent =
       "ROUND #" + current.id;
 
-    $("#flyingplane").className =
-      current.phase === "FLYING"
-        ? "flying"
-        : current.phase === "CRASHED"
-          ? "gone"
-          : "";
+    flightSnapshot = current;
+    flightReceivedAt = performance.now();
 
-    for (
-      const number of [1, 2]
-    ) {
-      const bet =
-        state.bets.find(
-          (item) =>
-            item.round_id ===
-              current.id &&
-            item.panel ===
-              number,
-        );
+    for (const number of [1, 2]) {
+      const bet = state.bets.find(
+        (item) =>
+          item.round_id === current.id &&
+          item.panel === number,
+      );
 
       const button = $(
         `[data-bet="${number}"]`,
@@ -779,24 +814,20 @@ async function refresh() {
       button.classList.toggle(
         "wine",
         !!bet &&
-          current.phase ===
-            "FLYING",
+          current.phase === "FLYING",
       );
 
       button.disabled =
         (
           !!bet &&
           (
-            bet.status !==
-              "ACTIVE" ||
-            current.phase !==
-              "FLYING"
+            bet.status !== "ACTIVE" ||
+            current.phase !== "FLYING"
           )
         ) ||
         (
           !bet &&
-          current.phase !==
-            "WAITING"
+          current.phase !== "WAITING"
         );
 
       if (
@@ -810,12 +841,10 @@ async function refresh() {
           <small>
             ${num(
               Math.floor(
-                bet.stake *
-                  current.mult,
+                bet.stake * current.mult,
               ),
             )}
-
-            DEMO COINS
+            AMOUNT
           </small>
         `;
       } else if (bet) {
@@ -828,22 +857,20 @@ async function refresh() {
 
           <small>
             ${num(bet.stake)}
-            DEMO COINS
+            AMOUNT
           </small>
         `;
       } else {
         button.innerHTML =
           current.phase === "WAITING"
-            ? "BET<small>DEMO COINS</small>"
+            ? "BET<small>AMOUNT</small>"
             : "NEXT ROUND";
       }
     }
 
     renderBets();
   } catch {
-    if (
-      $("#phase")
-    ) {
+    if ($("#phase")) {
       $("#phase").textContent =
         "CONNECTION LOST · RETRYING";
     }
@@ -897,14 +924,11 @@ function renderBets() {
               ${esc(
                 tab === "ALL"
                   ? item.username
-                  : "#" +
-                      item.round_id,
+                  : "#" + item.round_id,
               )}
             </td>
 
-            <td>
-              ${num(item.stake)}
-            </td>
+            <td>${num(item.stake)}</td>
 
             <td>
               <span class="pill">
@@ -913,9 +937,7 @@ function renderBets() {
                 ${
                   item.payout
                     ? " · " +
-                      num(
-                        item.payout,
-                      )
+                      num(item.payout)
                     : ""
                 }
               </span>
@@ -939,9 +961,7 @@ async function readImage(file) {
     return null;
   }
 
-  if (
-    file.size > 1500000
-  ) {
+  if (file.size > 1500000) {
     throw new Error(
       "Proof image must be under 1.5 MB.",
     );
@@ -949,13 +969,10 @@ async function readImage(file) {
 
   return new Promise(
     (resolve, reject) => {
-      const reader =
-        new FileReader();
+      const reader = new FileReader();
 
       reader.onload = () =>
-        resolve(
-          reader.result,
-        );
+        resolve(reader.result);
 
       reader.onerror = () =>
         reject(
@@ -964,57 +981,31 @@ async function readImage(file) {
           ),
         );
 
-      reader.readAsDataURL(
-        file,
-      );
+      reader.readAsDataURL(file);
     },
   );
 }
 
 async function request(type) {
-  config =
-    await api(
-      "public",
-    );
+  config = await api("public");
 
-  const deposit =
-    type ===
-    "DEPOSIT";
+  const deposit = type === "DEPOSIT";
+  const minimum = deposit ? 100 : 300;
 
   const bankFields = [
-    [
-      "Account Holder",
-      config.bankHolder,
-    ],
-    [
-      "Bank",
-      config.bankName,
-    ],
-    [
-      "Account Number",
-      config.bankAccount,
-    ],
-    [
-      "IFSC",
-      config.bankIfsc,
-    ],
-    [
-      "UPI ID",
-      config.upiId,
-    ],
+    ["Account Holder", config.bankHolder],
+    ["Bank", config.bankName],
+    ["Account Number", config.bankAccount],
+    ["IFSC", config.bankIfsc],
+    ["UPI ID", config.upiId],
   ];
 
   const payment = `
     <div class="bankdetails">
-      <h3>
-        Admin Deposit Details
-      </h3>
+      <h3>Admin Deposit Details</h3>
 
       ${bankFields
-        .filter(
-          ([, value]) =>
-            value,
-        )
+        .filter(([, value]) => value)
         .map(
           ([label, value]) => `
             <p>
@@ -1050,12 +1041,12 @@ async function request(type) {
 
   show(
     deposit
-      ? "Demo Deposit Request"
-      : "Demo Withdrawal Request",
+      ? "Deposit Request"
+      : "Withdrawal Request",
     `
       <p>
-        Virtual demo coins only.
-        This screen records demo requests;
+        Simulation balance.
+        This screen records simulation requests;
         it does not send money or verify
         bank payments.
       </p>
@@ -1064,15 +1055,15 @@ async function request(type) {
 
       <form id="reqform">
         <label>
-          Demo Coins (100–25,000)
+          Amount (₹${minimum}–₹25,000)
 
           <input
             name="amount"
             type="number"
-            min="100"
+            min="${minimum}"
             max="25000"
             step="1"
-            value="100"
+            value="${minimum}"
             required
           >
         </label>
@@ -1081,7 +1072,7 @@ async function request(type) {
           deposit
             ? `
               <label>
-                Demo UTR / Reference
+                UTR / Reference
 
                 <input
                   name="utr"
@@ -1155,7 +1146,7 @@ async function request(type) {
               </label>
 
               <p class="muted">
-                Demo coins will be held on
+                The withdrawal amount will be held on
                 submission. Rejection restores
                 the held coins.
               </p>
@@ -1193,67 +1184,42 @@ async function request(type) {
           "button",
         );
 
-      if (
-        button.disabled
-      ) {
+      if (button.disabled) {
         return;
       }
 
-      button.disabled =
-        true;
+      button.disabled = true;
 
       try {
         const formData =
           Object.fromEntries(
-            new FormData(
-              event.target,
-            ),
+            new FormData(event.target),
           );
 
-        const proof =
-          deposit
-            ? await readImage(
-                event.target.querySelector(
-                  "[name=proofFile]",
-                ).files[0],
-              )
-            : null;
+        const proof = deposit
+          ? await readImage(
+              event.target.querySelector(
+                "[name=proofFile]",
+              ).files[0],
+            )
+          : null;
 
-        const result =
-          await api(
-            "request",
-            {
-              type,
-
-              amount:
-                Number(
-                  formData.amount,
-                ),
-
-              note:
-                formData.note,
-
-              utr:
-                formData.utr,
-
-              proof,
-
-              holder:
-                formData.holder,
-
-              bank:
-                formData.bank,
-
-              account:
-                formData.account,
-
-              confirmAccount:
-                formData.confirmAccount,
-
-              ifsc:
-                formData.ifsc,
-            },
-          );
+        const result = await api(
+          "request",
+          {
+            type,
+            amount: Number(formData.amount),
+            note: formData.note,
+            utr: formData.utr,
+            proof,
+            holder: formData.holder,
+            bank: formData.bank,
+            account: formData.account,
+            confirmAccount:
+              formData.confirmAccount,
+            ifsc: formData.ifsc,
+          },
+        );
 
         modal.close();
 
@@ -1265,23 +1231,18 @@ async function request(type) {
 
         await refresh();
       } catch (error) {
-        if (
-          $("#formerror")
-        ) {
+        if ($("#formerror")) {
           $("#formerror").textContent =
             error.message;
         }
       } finally {
-        button.disabled =
-          false;
+        button.disabled = false;
       }
     };
 }
 
 function info(kind) {
-  if (
-    kind === "rules"
-  ) {
+  if (kind === "rules") {
     show(
       "Rules",
       `
@@ -1292,9 +1253,7 @@ function info(kind) {
     );
   }
 
-  if (
-    kind === "bonus"
-  ) {
+  if (kind === "bonus") {
     show(
       "Bonus Information",
       `
@@ -1324,9 +1283,7 @@ function info(kind) {
     );
   }
 
-  if (
-    kind === "promo"
-  ) {
+  if (kind === "promo") {
     show(
       "Promo Code",
       `
@@ -1362,26 +1319,19 @@ function info(kind) {
             "button",
           );
 
-        button.disabled =
-          true;
+        button.disabled = true;
 
         try {
-          await api(
-            "promo",
-            {
-              code:
-                new FormData(
-                  event.target,
-                ).get(
-                  "code",
-                ),
-            },
-          );
+          await api("promo", {
+            code: new FormData(
+              event.target,
+            ).get("code"),
+          });
 
           modal.close();
 
           toast(
-            "Demo promo bonus credited",
+            "Promo bonus credited",
           );
 
           await refresh();
@@ -1389,18 +1339,14 @@ function info(kind) {
           $("#formerror").textContent =
             error.message;
         } finally {
-          button.disabled =
-            false;
+          button.disabled = false;
         }
       };
   }
 }
 
 async function account() {
-  const data =
-    await api(
-      "account",
-    );
+  const data = await api("account");
 
   show(
     "Account History",
@@ -1411,7 +1357,7 @@ async function account() {
         <table>
           <tr>
             <th>TYPE</th>
-            <th>COINS</th>
+            <th>AMOUNT</th>
             <th>STATUS</th>
           </tr>
 
@@ -1421,21 +1367,15 @@ async function account() {
                 (item) => `
                   <tr>
                     <td>
-                      ${esc(
-                        item.type,
-                      )}
+                      ${esc(item.type)}
                     </td>
 
                     <td>
-                      ${num(
-                        item.amount,
-                      )}
+                      ${num(item.amount)}
                     </td>
 
                     <td>
-                      ${esc(
-                        item.status,
-                      )}
+                      ${esc(item.status)}
 
                       <small>
                         ${esc(
@@ -1453,9 +1393,7 @@ async function account() {
                               )}"
                               target="_blank"
                               rel="noopener"
-                            >
-                              View proof
-                            </a>
+                            >View proof</a>
                           `
                           : ""
                       }
@@ -1466,16 +1404,14 @@ async function account() {
               .join("") ||
             `
               <tr>
-                <td>
-                  No requests yet
-                </td>
+                <td>No requests yet</td>
               </tr>
             `
           }
         </table>
       </div>
 
-      <h3>Coin Statement</h3>
+      <h3>Account Statement</h3>
 
       <div class="tablewrap">
         <table>
@@ -1485,9 +1421,7 @@ async function account() {
                 (item) => `
                   <tr>
                     <td>
-                      ${esc(
-                        item.note,
-                      )}
+                      ${esc(item.note)}
 
                       <small>
                         ${esc(
@@ -1509,9 +1443,7 @@ async function account() {
                     </td>
 
                     <td>
-                      ${num(
-                        item.amount,
-                      )}
+                      ${num(item.amount)}
                     </td>
                   </tr>
                 `,
@@ -1519,9 +1451,7 @@ async function account() {
               .join("") ||
             `
               <tr>
-                <td>
-                  No transactions yet
-                </td>
+                <td>No transactions yet</td>
               </tr>
             `
           }
@@ -1535,9 +1465,7 @@ app.addEventListener(
   "click",
   async (event) => {
     const button =
-      event.target.closest(
-        "button",
-      );
+      event.target.closest("button");
 
     if (
       !button ||
@@ -1547,12 +1475,8 @@ app.addEventListener(
     }
 
     try {
-      if (
-        button.dataset.auth
-      ) {
-        auth(
-          button.dataset.auth,
-        );
+      if (button.dataset.auth) {
+        auth(button.dataset.auth);
       } else if (
         button.hasAttribute(
           "data-support",
@@ -1564,10 +1488,7 @@ app.addEventListener(
           "data-logout",
         )
       ) {
-        await api(
-          "logout",
-          {},
-        );
+        await api("logout", {});
 
         me = null;
         state = null;
@@ -1588,9 +1509,7 @@ app.addEventListener(
       } else if (
         button.dataset.info
       ) {
-        info(
-          button.dataset.info,
-        );
+        info(button.dataset.info);
       } else if (
         button.hasAttribute(
           "data-account",
@@ -1600,58 +1519,37 @@ app.addEventListener(
       } else if (
         button.dataset.step
       ) {
-        const step =
-          Number(
-            button.dataset.step,
-          );
+        const step = Number(
+          button.dataset.step,
+        );
 
         const number =
-          Math.abs(
-            step,
-          );
+          Math.abs(step);
 
-        const input =
-          $(
-            "#stake" +
-              number,
-          );
+        const input = $(
+          "#stake" + number,
+        );
 
-        input.value =
-          Math.max(
-            100,
-            Math.min(
-              25000,
-              Number(
-                input.value,
-              ) +
-                (
-                  step > 0
-                    ? 100
-                    : -100
-                ),
-            ),
-          );
+        input.value = Math.max(
+          10,
+          Math.min(
+            25000,
+            Number(input.value) +
+              (step > 0 ? 10 : -10),
+          ),
+        );
       } else if (
         button.dataset.quick
       ) {
-        const [
-          number,
-          value,
-        ] =
-          button.dataset.quick.split(
-            ",",
-          );
+        const [number, value] =
+          button.dataset.quick.split(",");
 
-        $(
-          "#stake" +
-            number,
-        ).value =
+        $("#stake" + number).value =
           value;
       } else if (
         button.dataset.tab
       ) {
-        tab =
-          button.dataset.tab;
+        tab = button.dataset.tab;
 
         for (
           const item of
@@ -1661,8 +1559,7 @@ app.addEventListener(
         ) {
           item.classList.toggle(
             "green",
-            item ===
-              button,
+            item === button,
           );
         }
 
@@ -1670,106 +1567,71 @@ app.addEventListener(
       } else if (
         button.dataset.bet
       ) {
-        if (
-          !state
-        ) {
+        if (!state) {
           return;
         }
 
         busy = true;
+        button.disabled = true;
 
-        button.disabled =
-          true;
+        const number = Number(
+          button.dataset.bet,
+        );
 
-        const number =
-          Number(
-            button.dataset.bet,
-          );
-
-        const bet =
-          state.bets.find(
-            (item) =>
-              item.round_id ===
-                state.round.id &&
-              item.panel ===
-                number &&
-              item.status ===
-                "ACTIVE",
-          );
+        const bet = state.bets.find(
+          (item) =>
+            item.round_id ===
+              state.round.id &&
+            item.panel === number &&
+            item.status === "ACTIVE",
+        );
 
         try {
-          if (
-            bet
-          ) {
-            await api(
-              "cashout",
-              {
-                id:
-                  bet.id,
-              },
-            );
+          if (bet) {
+            await api("cashout", {
+              id: bet.id,
+            });
           } else {
-            await api(
-              "bet",
-              {
-                amount:
-                  Number(
-                    $(
-                      "#stake" +
-                        number,
-                    ).value,
-                  ),
+            await api("bet", {
+              amount: Number(
+                $(
+                  "#stake" + number,
+                ).value,
+              ),
 
-                panel:
-                  number,
-
-                roundId:
-                  state.round.id,
-              },
-            );
+              panel: number,
+              roundId: state.round.id,
+            });
           }
         } finally {
           busy = false;
-
           await refresh();
         }
       }
     } catch (error) {
-      toast(
-        error.message,
-      );
+      toast(error.message);
     }
   },
 );
 
 async function init() {
   try {
-    config =
-      await api(
-        "public",
-      );
+    config = await api("public");
 
     me = (
-      await api(
-        "me",
-      )
+      await api("me")
     ).user;
 
     if (
-      me?.role ===
-      "customer"
+      me?.role === "customer"
     ) {
       if (
         me.mustChangePassword
       ) {
         welcome();
-
-        changePassword(
-          true,
-        );
+        changePassword(true);
       } else {
         renderGame();
-
         await refresh();
       }
     } else {
@@ -1783,9 +1645,7 @@ async function init() {
       </p>
     `;
 
-    toast(
-      error.message,
-    );
+    toast(error.message);
   }
 }
 
@@ -1799,9 +1659,7 @@ setInterval(
 document.addEventListener(
   "visibilitychange",
   () => {
-    if (
-      !document.hidden
-    ) {
+    if (!document.hidden) {
       refresh();
     }
   },
