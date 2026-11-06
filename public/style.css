@@ -861,7 +861,7 @@ select {
   margin-top: 24px;
 }
 
-/* Deposit bank details and images */
+/* Deposit details and images */
 
 .bankdetails {
   border: 1px solid #385255;
@@ -990,8 +990,6 @@ input[type="file"] {
   font-size: 10px;
   letter-spacing: 0.4px;
 }
-
-/* Flight animation */
 
 @keyframes float {
   50% {
@@ -1231,4 +1229,63 @@ input[type="file"] {
     animation: none !important;
     transition: none !important;
   }
+}
+
+/* Flight follows the server round clock */
+
+.flightplot {
+  position: absolute;
+  inset: 10px 12px 20px;
+  pointer-events: none;
+}
+
+.flightplot #flyingplane {
+  position: absolute;
+  right: auto;
+  width: clamp(60px, 14vw, 92px);
+  height: auto;
+  max-width: none;
+  z-index: 2;
+  transition: none;
+  animation: none;
+  opacity: 1;
+  translate: 0 0;
+  will-change: left, top, transform;
+}
+
+.flightplot #flyingplane.flying {
+  animation: none;
+}
+
+.flightplot #flyingplane.gone {
+  opacity: 0;
+  translate: 120px -80px;
+
+  transition:
+    opacity 0.35s,
+    translate 0.6s;
+
+  animation: none;
+}
+
+/* Rupee amount input */
+
+.stakevalue {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+}
+
+.stakecurrency {
+  position: absolute;
+  left: 9px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 18px;
+  color: var(--green);
+  pointer-events: none;
+}
+
+.stakevalue input {
+  padding-left: 24px;
 }
