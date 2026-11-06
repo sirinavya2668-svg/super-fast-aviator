@@ -21,5 +21,6 @@ services:
       - key: ADMIN_PASSWORD
         sync: false
 
+      # Copy the database's Internal Database URL here in Render Environment.
       - key: DATABASE_URL
         sync: false
