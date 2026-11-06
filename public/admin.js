@@ -392,9 +392,7 @@ function roundTable() {
 
                 <td>
                   ${
-                    round.mode === "ADMIN"
-                      ? "Admin-Controlled Demo"
-                      : "Random Demo"
+                    modeLabel(round.mode)
                   }
                 </td>
               </tr>
@@ -568,183 +566,82 @@ function paymentsForm() {
   `;
 }
 
+function modeLabel(mode) {
+  if (mode === "ADMIN") return "Admin Control 01 — fixed simulation multiplier";
+  if (mode === "ADMIN2") return "Admin Control 02 — fixed simulation multiplier";
+  return "Random — automatic server outcome";
+}
+
 function gameForm() {
   const game = data.game;
   const settings = data.settings;
-
-  let plan;
-
-  try {
-    plan = JSON.parse(
-      settings.adminPlan || "null",
-    );
-  } catch {
-    plan = null;
+  const selected = ["ADMIN", "ADMIN2"].includes(settings.gameMode) ? settings.gameMode : "RANDOM";
+  function bankPlan(bank) {
+    const key = bank === "01" ? "adminPlan" : "adminPlan2";
+    let plan;
+    try { plan = JSON.parse(settings[key] || "null"); } catch { plan = null; }
+    if (!Array.isArray(plan)) plan = bank === "01" ? [Number(settings.manualMultiplier) || 2] : [];
+    return Array.from({length: 50}, (_, i) => plan[i] == null ? null : plan[i]);
   }
-
-  if (!Array.isArray(plan)) {
-    plan = [
-      Number(settings.manualMultiplier) ||
-        2,
-    ];
-  }
-
-  const filled = plan
-    .map((value, index) => ({
-      value,
-      slot: index + 1,
-    }))
-    .filter(
-      (entry) => entry.value !== null,
-    );
-
-  const nextEntry =
-    filled[
-      Number(
-        settings.adminPlanCursor || 0,
-      ) % (filled.length || 1)
-    ];
-
   return `
     <p class="modebanner">
-      Current round #${game.id}:
-
-      <strong>
-        ${
-          game.mode === "ADMIN"
-            ? "ADMIN-CONTROLLED DEMO"
-            : "RANDOM DEMO"
-        }
-      </strong>
-
-      · ${esc(game.phase)}
+      Current round #${game.id}: <strong>${esc(modeLabel(game.mode))}</strong> · ${esc(game.phase)}
+      · Current box: ${game.mode !== "RANDOM" && game.planSlot ? "#" + game.planSlot : "—"}
     </p>
-
-    <p>
-      Changes apply when the next betting
-      countdown starts. The current round
-      is locked. Every customer sees the
-      active demo mode.
-    </p>
-
+    <p>Changes apply at the next betting countdown. The current round stays locked.</p>
     <form id="gamecontrol">
-      <label>
-        Next Round Mode
-
+      <label>Next Round Mode
         <select name="mode">
-          <option
-            value="RANDOM"
-            ${
-              settings.gameMode === "RANDOM"
-                ? "selected"
-                : ""
-            }
-          >
-            Random — automatic server outcome
-          </option>
-
-          <option
-            value="ADMIN"
-            ${
-              settings.gameMode === "ADMIN"
-                ? "selected"
-                : ""
-            }
-          >
-            Admin Control — fixed demo multiplier
-          </option>
+          ${["RANDOM", "ADMIN", "ADMIN2"].map(mode => `
+            <option value="${mode}" ${mode === selected ? "selected" : ""}>${esc(modeLabel(mode))}</option>
+          `).join("")}
         </select>
       </label>
-
-      <fieldset class="planfieldset">
-        <legend>
-          Admin target multipliers (1.00–50.00x)
-        </legend>
-
-        <p class="muted">
-          Fill any of the 50 boxes.
-          Empty boxes are skipped.
-        </p>
-
-        <div class="multipliergrid">
-          ${Array.from(
-            { length: 50 },
-            (_, index) => `
-              <label>
-                <span>#${index + 1}</span>
-
-                <input
-                  name="target${index}"
-                  type="number"
-                  min="1"
-                  max="50"
-                  step="0.01"
-                  inputmode="decimal"
-                  autocomplete="off"
-                  placeholder="—"
-                  aria-label="Multiplier box ${index + 1}"
-                  value="${
-                    plan[index] == null
-                      ? ""
-                      : esc(
-                          Number(
-                            plan[index],
-                          ).toFixed(2),
-                        )
-                  }"
-                >
-              </label>
-            `,
-          ).join("")}
-        </div>
-      </fieldset>
-
+      ${["01", "02"].map(bank => {
+        const plan = bankPlan(bank);
+        const mode = bank === "01" ? "ADMIN" : "ADMIN2";
+        const filled = plan.map((value, i) => ({value, slot: i + 1})).filter(entry => entry.value !== null);
+        const cursor = Number(settings[bank === "01" ? "adminPlanCursor" : "adminPlanCursor2"] || 0);
+        const next = filled[cursor % (filled.length || 1)];
+        return `
+          <fieldset class="planfieldset" data-plan-bank="${mode}" ${selected === mode ? "" : "hidden"}>
+            <legend>Admin Control ${bank} — 50 multipliers (1.00–50.00x)</legend>
+            <p class="muted">Fill any of the 50 boxes. Empty boxes are skipped. This plan repeats only its own boxes.</p>
+            <div class="multipliergrid">
+              ${plan.map((value, index) => `
+                <label><span>#${index + 1}</span>
+                  <input name="target${bank}_${index}" type="number" min="1" max="50" step="0.01"
+                    inputmode="decimal" autocomplete="off" placeholder="—"
+                    aria-label="Admin Control ${bank} multiplier box ${index + 1}"
+                    value="${value === null ? "" : esc(Number(value).toFixed(2))}">
+                </label>
+              `).join("")}
+            </div>
+            <p class="muted">Next saved box for plan ${bank}: ${next ? "#" + next.slot : "—"}.</p>
+          </fieldset>
+        `;
+      }).join("")}
       <p class="muted">
-        Current round box:
-        ${
-          game.mode === "ADMIN" &&
-          game.planSlot
-            ? "#" + game.planSlot
-            : "—"
-        }.
-
-        Next saved box:
-        ${
-          nextEntry
-            ? "#" + nextEntry.slot
-            : "—"
-        }.
-
-        Save starts the updated plan from
-        its first filled box at the next countdown.
+        Save starts the selected plan at its first filled box on the next countdown.
+        It runs in numbered order, then repeats from its first filled box.
+        Plans 01 and 02 never switch automatically. Select another mode and Save to switch.
+        Both plans are saved separately. Switching the dropdown keeps unsaved values until you leave this page.
+        Targets are fixed before betting starts. Simulation balance only.
       </p>
-
-      <p class="muted">
-        Admin Control uses the filled boxes
-        in numbered order, one per round.
-        After the last filled box, it repeats
-        from the first filled box.
-        The plan continues until you save
-        a new plan or select Random.
-        Targets are fixed before betting starts.
-        Simulation balance only.
-      </p>
-
-      <button
-        type="submit"
-        class="wine"
-      >SAVE NEXT ROUND MODE</button>
-
+      <button type="submit" class="wine">SAVE NEXT ROUND MODE</button>
       <p class="error"></p>
     </form>
-
-    <h3 class="spaced">
-      Recent Completed Rounds
-    </h3>
-
+    <h3 class="spaced">Recent Completed Rounds</h3>
     ${roundTable()}
   `;
 }
+
+app.addEventListener("change", event => {
+  if (!event.target.matches('#gamecontrol select[name="mode"]')) return;
+  for (const fieldset of app.querySelectorAll("[data-plan-bank]")) {
+    fieldset.hidden = fieldset.dataset.planBank !== event.target.value;
+  }
+});
 
 async function load() {
   data = await api("admin/data");
@@ -910,9 +807,7 @@ function render() {
 
           <p>
             ${
-              data.game.mode === "ADMIN"
-                ? "Admin-Controlled Demo"
-                : "Random Demo"
+              modeLabel(data.game.mode)
             }
           </p>
 
@@ -1280,26 +1175,14 @@ function render() {
   formHandler(
     "#gamecontrol",
     async (body) => {
-      const targets = Array.from(
-        { length: 50 },
-        (_, index) => {
-          const value = String(
-            body["target" + index] || "",
-          ).trim();
-
-          return value === ""
-            ? null
-            : Number(value);
-        },
-      );
-
-      await api(
-        "admin/game",
-        {
-          mode: body.mode,
-          targets,
-        },
-      );
+      const plans = Object.fromEntries(["01", "02"].map(bank => [
+        bank,
+        Array.from({length: 50}, (_, index) => {
+          const value = String(body["target" + bank + "_" + index] || "").trim();
+          return value === "" ? null : Number(value);
+        }),
+      ]));
+      await api("admin/game", { mode: body.mode, plans });
 
       await load();
 
