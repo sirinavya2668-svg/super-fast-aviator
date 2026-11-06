@@ -18,7 +18,18 @@ const esc = (value) =>
   );
 
 const num = (value) =>
-  Number(value || 0).toLocaleString("en-IN");
+  Number(value || 0).toLocaleString(
+    "en-IN",
+  );
+
+const money = (value) =>
+  "₹" + num(value);
+
+const ledgerLabel = (value) =>
+  String(value || "").replace(
+    /demo\s+/gi,
+    "",
+  );
 
 const when = (value) =>
   value
@@ -40,7 +51,7 @@ let polling = false;
 const pages = [
   "Dashboard",
   "Customer IDs",
-  "Coins Management",
+  "Wallet Management",
   "Deposit Requests",
   "Withdrawal Requests",
   "Deposit Details / QR",
@@ -81,7 +92,8 @@ async function api(route, body) {
 
       headers: body
         ? {
-            "Content-Type": "application/json",
+            "Content-Type":
+              "application/json",
           }
         : {},
 
@@ -127,13 +139,18 @@ function show(title, html) {
   }
 }
 
-modal.addEventListener("click", (event) => {
-  if (
-    event.target.closest("[data-close]")
-  ) {
-    modal.close();
-  }
-});
+modal.addEventListener(
+  "click",
+  (event) => {
+    if (
+      event.target.closest(
+        "[data-close]",
+      )
+    ) {
+      modal.close();
+    }
+  },
+);
 
 function field(
   label,
@@ -175,7 +192,9 @@ async function readImage(file) {
 
       reader.onerror = () =>
         reject(
-          new Error("Could not read image"),
+          new Error(
+            "Could not read image",
+          ),
         );
 
       reader.readAsDataURL(file);
@@ -289,7 +308,7 @@ function reqTable(rows) {
         <thead>
           <tr>
             <th>Ref / Customer</th>
-            <th>Demo Coins</th>
+            <th>Amount</th>
             <th>Type</th>
             <th>Status</th>
             <th>Action</th>
@@ -310,22 +329,30 @@ function reqTable(rows) {
 
                       <small>
                         ${esc(
-                          when(request.created),
+                          when(
+                            request.created,
+                          ),
                         )}
                       </small>
                     </td>
 
                     <td>
-                      ${num(request.amount)}
+                      ${money(
+                        request.amount,
+                      )}
                     </td>
 
                     <td>
-                      ${esc(request.type)}
+                      ${esc(
+                        request.type,
+                      )}
                     </td>
 
                     <td>
                       <span class="pill">
-                        ${esc(request.status)}
+                        ${esc(
+                          request.status,
+                        )}
                       </span>
                     </td>
 
@@ -475,7 +502,7 @@ function paymentsForm() {
   return `
     <p>
       These details appear on the customer
-      demo deposit screen. No payment is
+      deposit screen. No payment is
       sent or verified by this application.
     </p>
 
@@ -639,7 +666,7 @@ function gameForm() {
         uses this target until you change
         it or select Random. Targets are
         fixed before betting starts.
-        Demo coins only.
+        Simulation balance only.
       </p>
 
       <button
@@ -749,7 +776,7 @@ function render() {
         <div id="admincontent"></div>
 
         <footer>
-          Virtual demo coin administration ·
+          Simulation account administration ·
           Requests refresh every 10 seconds
         </footer>
       </main>
@@ -765,7 +792,7 @@ function render() {
         data.users.length,
       ],
       [
-        "Demo Coins Issued",
+        "Total Amount Credited",
         data.coins,
       ],
       [
@@ -806,12 +833,15 @@ function render() {
           .map(
             ([title, value]) => `
               <div class="card">
-                <span>
-                  ${title}
-                </span>
+                <span>${title}</span>
 
                 <b>
-                  ${num(value)}
+                  ${
+                    title ===
+                    "Total Amount Credited"
+                      ? money(value)
+                      : num(value)
+                  }
                 </b>
               </div>
             `,
@@ -894,7 +924,7 @@ function render() {
           </div>
 
           <p class="muted">
-            New account starts with 0 demo coins.
+            New account starts with ₹0 balance.
             Customer must change the temporary
             password on first login.
           </p>
@@ -914,27 +944,23 @@ function render() {
       </section>
     `;
   } else if (
-    page === "Coins Management"
+    page === "Wallet Management"
   ) {
     html = `
       <section class="card">
-        <h2>
-          Add / Deduct Demo Coins
-        </h2>
+        <h2>Add / Deduct Balance</h2>
 
         ${usersTable()}
       </section>
 
       <section class="card spaced">
-        <h2>
-          Coin Transaction Log
-        </h2>
+        <h2>Wallet Transaction Log</h2>
 
         <div class="tablewrap">
           <table>
             <tr>
               <th>Customer</th>
-              <th>Coins</th>
+              <th>Amount</th>
               <th>Reason</th>
               <th>Time</th>
             </tr>
@@ -944,20 +970,30 @@ function render() {
                 (entry) => `
                   <tr>
                     <td>
-                      ${esc(entry.username)}
+                      ${esc(
+                        entry.username,
+                      )}
                     </td>
 
                     <td>
-                      ${num(entry.amount)}
-                    </td>
-
-                    <td>
-                      ${esc(entry.note)}
+                      ${money(
+                        entry.amount,
+                      )}
                     </td>
 
                     <td>
                       ${esc(
-                        when(entry.created),
+                        ledgerLabel(
+                          entry.note,
+                        ),
+                      )}
+                    </td>
+
+                    <td>
+                      ${esc(
+                        when(
+                          entry.created,
+                        ),
                       )}
                     </td>
                   </tr>
@@ -980,9 +1016,7 @@ function render() {
             Status
 
             <select id="requeststatus">
-              <option value="">
-                All
-              </option>
+              <option value="">All</option>
               <option>PENDING</option>
               <option>SUCCESS</option>
               <option>REJECTED</option>
@@ -1011,9 +1045,7 @@ function render() {
   ) {
     html = `
       <section class="card">
-        <h2>
-          Customer Deposit Details
-        </h2>
+        <h2>Customer Deposit Details</h2>
 
         ${paymentsForm()}
       </section>
@@ -1023,9 +1055,7 @@ function render() {
   ) {
     html = `
       <section class="card">
-        <h2>
-          Random / Admin Control
-        </h2>
+        <h2>Random / Admin Control</h2>
 
         ${gameForm()}
       </section>
@@ -1059,12 +1089,18 @@ function render() {
                     </td>
 
                     <td>
-                      ${esc(entry.note)}
+                      ${esc(
+                        ledgerLabel(
+                          entry.note,
+                        ),
+                      )}
                     </td>
 
                     <td>
                       ${esc(
-                        when(entry.created),
+                        when(
+                          entry.created,
+                        ),
                       )}
                     </td>
                   </tr>
@@ -1157,9 +1193,7 @@ function render() {
         "promo",
         "losing",
       ]) {
-        body[key] = Number(
-          body[key],
-        );
+        body[key] = Number(body[key]);
       }
 
       await api(
@@ -1201,7 +1235,7 @@ function usersTable() {
       <table>
         <tr>
           <th>Customer / Login ID</th>
-          <th>Demo Coins</th>
+          <th>Amount</th>
           <th>Status</th>
           <th>Actions</th>
         </tr>
@@ -1221,7 +1255,7 @@ function usersTable() {
                   </td>
 
                   <td>
-                    ${num(user.balance)}
+                    ${money(user.balance)}
                   </td>
 
                   <td>
@@ -1246,7 +1280,7 @@ function usersTable() {
                     <button
                       class="green mini"
                       data-coins="${user.id}"
-                    >Manage Coins</button>
+                    >Manage Balance</button>
 
                     <button
                       class="wine mini"
@@ -1346,8 +1380,8 @@ function review(id) {
         </strong>
 
         · ${esc(request.type)}
-        · ${num(request.amount)}
-        DEMO COINS
+        · ${money(request.amount)}
+        AMOUNT
       </p>
 
       <p>
@@ -1403,16 +1437,14 @@ function review(id) {
 
       <p>
         ${
-          request.type ===
-          "WITHDRAWAL"
-            ? "Demo coins were held when this request was submitted. Rejection restores them; approval marks the request complete. No bank transfer is performed."
-            : "Approval credits demo coins. This app does not verify a real payment."
+          request.type === "WITHDRAWAL"
+            ? "The withdrawal amount was held when this request was submitted. Rejection restores them; approval marks the request complete. No bank transfer is performed."
+            : "Approval credits the balance. This app does not verify a real payment."
         }
       </p>
 
       ${
-        request.status ===
-        "PENDING"
+        request.status === "PENDING"
           ? `
             <form id="reviewform">
               ${field(
@@ -1454,7 +1486,9 @@ function review(id) {
             <p>
               Reviewed:
               ${esc(
-                when(request.reviewed_at),
+                when(
+                  request.reviewed_at,
+                ),
               )}
             </p>
           `
@@ -1478,16 +1512,12 @@ function review(id) {
       await load();
 
       if (
-        page.includes(
-          " Requests",
-        )
+        page.includes(" Requests")
       ) {
         await loadRequests();
       }
 
-      toast(
-        "Request updated",
-      );
+      toast("Request updated");
     },
   );
 }
@@ -1496,9 +1526,7 @@ app.addEventListener(
   "click",
   async (event) => {
     const button =
-      event.target.closest(
-        "button",
-      );
+      event.target.closest("button");
 
     if (
       !button ||
@@ -1525,15 +1553,12 @@ app.addEventListener(
         button.hasAttribute(
           "data-refresh",
         ) ||
-        button.id ===
-          "newrequest"
+        button.id === "newrequest"
       ) {
         await load();
 
         if (
-          page.includes(
-            " Requests",
-          )
+          page.includes(" Requests")
         ) {
           await loadRequests();
         }
@@ -1541,12 +1566,11 @@ app.addEventListener(
         button.dataset.page !==
         undefined
       ) {
-        page =
-          pages[
-            Number(
-              button.dataset.page,
-            )
-          ];
+        page = pages[
+          Number(
+            button.dataset.page,
+          )
+        ];
 
         requestRows = [];
         next = null;
@@ -1554,9 +1578,7 @@ app.addEventListener(
         await load();
 
         if (
-          page.includes(
-            " Requests",
-          )
+          page.includes(" Requests")
         ) {
           await loadRequests();
         }
@@ -1583,10 +1605,7 @@ app.addEventListener(
       } else if (
         button.dataset.block
       ) {
-        const [
-          id,
-          blocked,
-        ] =
+        const [id, blocked] =
           button.dataset.block.split(
             ",",
           );
@@ -1596,9 +1615,7 @@ app.addEventListener(
           {
             id: Number(id),
             action: "block",
-            blocked: Number(
-              blocked,
-            ),
+            blocked: Number(blocked),
           },
         );
 
@@ -1664,17 +1681,16 @@ app.addEventListener(
 
         const user =
           data.users.find(
-            (item) =>
-              item.id === id,
+            (item) => item.id === id,
           );
 
         show(
-          "Demo Coins · " +
+          "Wallet · " +
             user.username,
           `
             <p>
               Available:
-              ${num(user.balance)}
+              ${money(user.balance)}
             </p>
 
             <form id="coinsform">
@@ -1683,17 +1699,17 @@ app.addEventListener(
 
                 <select name="action">
                   <option value="credit">
-                    Add Demo Coins
+                    Add Balance
                   </option>
 
                   <option value="debit">
-                    Deduct Demo Coins
+                    Deduct Balance
                   </option>
                 </select>
               </label>
 
               ${field(
-                "Demo Coins (100–25,000)",
+                "Amount (₹100–₹25,000)",
                 "amount",
                 1000,
                 "number",
@@ -1737,15 +1753,13 @@ app.addEventListener(
             await load();
 
             toast(
-              "Demo coins updated",
+              "Balance updated",
             );
           },
         );
       }
     } catch (error) {
-      toast(
-        error.message,
-      );
+      toast(error.message);
     }
   },
 );
@@ -1762,35 +1776,27 @@ async function poll() {
   polling = true;
 
   try {
-    const result =
-      await api(
-        "admin/summary",
-      );
+    const result = await api(
+      "admin/summary",
+    );
 
-    if (
-      $("#depositCount")
-    ) {
+    if ($("#depositCount")) {
       $("#depositCount").textContent =
         result.deposits;
     }
 
-    if (
-      $("#withdrawalCount")
-    ) {
+    if ($("#withdrawalCount")) {
       $("#withdrawalCount").textContent =
         result.withdrawals;
     }
 
     if (
-      result.latestId >
-      lastSeen
+      result.latestId > lastSeen
     ) {
       const button =
         $("#newrequest");
 
-      if (
-        button
-      ) {
+      if (button) {
         button.hidden = false;
 
         button.textContent =
@@ -1812,8 +1818,7 @@ try {
   ).user;
 
   if (
-    me?.role ===
-    "admin"
+    me?.role === "admin"
   ) {
     await load();
   } else {
@@ -1822,9 +1827,7 @@ try {
 } catch (error) {
   loginScreen();
 
-  toast(
-    error.message,
-  );
+  toast(error.message);
 }
 
 setInterval(
