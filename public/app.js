@@ -2,7 +2,7 @@ import {
   flightPoint,
   elapsedAt,
   GameAudio,
-} from "/flight.js?v=20261106-support";
+} from "/flight.js?v=20261106-customerpromo";
 
 const $ = (selector) =>
   document.querySelector(selector);
@@ -1345,6 +1345,10 @@ async function info(kind) {
   }
 
   if (kind === "promo") {
+    const result = await api("me");
+    if (!result.user || result.user.role !== "customer") return;
+    me = result.user;
+    const promoCode = me.promoCode || "";
     show(
       "Promo Code",
       `
@@ -1354,7 +1358,7 @@ async function info(kind) {
 
             <input
               name="code"
-              value="${esc(config.promoCode || "")}"
+              value="${esc(promoCode)}"
               readonly
               required
               maxlength="30"
@@ -1363,7 +1367,9 @@ async function info(kind) {
 
           <button
             class="green full"
+            ${promoCode ? "" : "disabled"}
           >CHECK CODE</button>
+          ${promoCode ? "" : '<p class="muted">Admin has not assigned a promo code to your ID yet. Contact Customer Support.</p>'}
 
           <p
             class="error"
