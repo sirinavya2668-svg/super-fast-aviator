@@ -2,7 +2,7 @@ import {
   flightPoint,
   elapsedAt,
   GameAudio,
-} from "/flight.js?v=20261106-sound2";
+} from "/flight.js?v=20261106-manualbonus";
 
 const $ = (selector) =>
   document.querySelector(selector);
@@ -613,6 +613,8 @@ function renderGame() {
           <button
             data-info="promo"
           >Promo Code</button>
+
+          <button data-logout>Logout</button>
         </div>
       </nav>
 
@@ -1281,22 +1283,23 @@ function info(kind) {
         <p>
           Welcome:
           ${pct("welcome")}%
-          on the first approved
-          demo deposit.
+          added only by admin after review.
+          Deposit approval does not add this bonus automatically.
         </p>
 
         <p>
           Promo:
           ${pct("promo")}%
-          of the first approved
-          demo deposit,
-          once per code.
+          added only by admin.
+          Checking a promo code does not credit the balance.
         </p>
 
         <p>
           Losing:
           ${pct("losing")}%
-          of each lost demo stake.
+          reviewed by admin when losses reach ₹10,000 or more.
+          Admin enters the bonus amount manually.
+          Losing a bet never adds this bonus automatically.
         </p>
       `,
     );
@@ -1319,7 +1322,7 @@ function info(kind) {
 
           <button
             class="green full"
-          >APPLY CODE</button>
+          >CHECK CODE</button>
 
           <p
             class="error"
@@ -1341,7 +1344,7 @@ function info(kind) {
         button.disabled = true;
 
         try {
-          await api(
+          const result = await api(
             "promo",
             {
               code: new FormData(
@@ -1352,7 +1355,7 @@ function info(kind) {
 
           modal.close();
 
-          toast("Promo bonus credited");
+          toast(result.message || "Contact admin for the promo bonus.");
 
           await refresh();
         } catch (error) {
