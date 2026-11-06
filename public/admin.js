@@ -250,9 +250,7 @@ function loginScreen() {
 
       <h1>ADMIN PANEL</h1>
 
-      <p>
-        Separate administrator login
-      </p>
+      <p>Separate administrator login</p>
 
       <form id="adminlogin">
         ${field(
@@ -283,9 +281,7 @@ function loginScreen() {
         Customer accounts use the customer link.
       </p>
 
-      <a href="/">
-        Open Customer Site
-      </a>
+      <a href="/">Open Customer Site</a>
     </main>
   `;
 
@@ -317,62 +313,49 @@ function reqTable(rows) {
 
         <tbody>
           ${
-            rows
-              .map(
-                (request) => `
-                  <tr>
-                    <td>
-                      #${request.id} ·
+            rows.map(
+              (request) => `
+                <tr>
+                  <td>
+                    #${request.id} ·
+                    ${esc(request.username)}
+
+                    <small>
                       ${esc(
-                        request.username,
+                        when(request.created),
                       )}
+                    </small>
+                  </td>
 
-                      <small>
-                        ${esc(
-                          when(
-                            request.created,
-                          ),
-                        )}
-                      </small>
-                    </td>
+                  <td>
+                    ${money(request.amount)}
+                  </td>
 
-                    <td>
-                      ${money(
-                        request.amount,
-                      )}
-                    </td>
+                  <td>
+                    ${esc(request.type)}
+                  </td>
 
-                    <td>
-                      ${esc(
-                        request.type,
-                      )}
-                    </td>
+                  <td>
+                    <span class="pill">
+                      ${esc(request.status)}
+                    </span>
+                  </td>
 
-                    <td>
-                      <span class="pill">
-                        ${esc(
-                          request.status,
-                        )}
-                      </span>
-                    </td>
-
-                    <td>
-                      <button
-                        class="green mini"
-                        data-review="${request.id}"
-                      >
-                        ${
-                          request.status ===
-                          "PENDING"
-                            ? "Review"
-                            : "Details"
-                        }
-                      </button>
-                    </td>
-                  </tr>
-                `,
-              )
-              .join("") ||
+                  <td>
+                    <button
+                      class="green mini"
+                      data-review="${request.id}"
+                    >
+                      ${
+                        request.status === "PENDING"
+                          ? "Review"
+                          : "Details"
+                      }
+                    </button>
+                  </td>
+                </tr>
+              `,
+            ).join("") ||
             `
               <tr>
                 <td colspan="5">
@@ -398,34 +381,28 @@ function roundTable() {
         </tr>
 
         ${
-          data.rounds
-            .map(
-              (round) => `
-                <tr>
-                  <td>
-                    #${round.id}
-                  </td>
+          data.rounds.map(
+            (round) => `
+              <tr>
+                <td>#${round.id}</td>
 
-                  <td>
-                    ${round.mult.toFixed(2)}x
-                  </td>
+                <td>
+                  ${round.mult.toFixed(2)}x
+                </td>
 
-                  <td>
-                    ${
-                      round.mode === "ADMIN"
-                        ? "Admin-Controlled Demo"
-                        : "Random Demo"
-                    }
-                  </td>
-                </tr>
-              `,
-            )
-            .join("") ||
+                <td>
+                  ${
+                    round.mode === "ADMIN"
+                      ? "Admin-Controlled Demo"
+                      : "Random Demo"
+                  }
+                </td>
+              </tr>
+            `,
+          ).join("") ||
           `
             <tr>
-              <td>
-                No completed rounds
-              </td>
+              <td>No completed rounds</td>
             </tr>
           `
         }
@@ -447,17 +424,15 @@ function settingsForm() {
         "welcome",
         "promo",
         "losing",
-      ]
-        .map((key) =>
-          field(
-            titles[key] + " %",
-            key,
-            data.settings[key],
-            "number",
-            'min="0" max="100" step="1" required',
-          ),
-        )
-        .join("")}
+      ].map(
+        (key) => field(
+          titles[key] + " %",
+          key,
+          data.settings[key],
+          "number",
+          'min="0" max="100" step="1" required',
+        ),
+      ).join("")}
 
       ${field(
         "Promo Code",
@@ -602,6 +577,39 @@ function gameForm() {
   const game = data.game;
   const settings = data.settings;
 
+  let plan;
+
+  try {
+    plan = JSON.parse(
+      settings.adminPlan || "null",
+    );
+  } catch {
+    plan = null;
+  }
+
+  if (!Array.isArray(plan)) {
+    plan = [
+      Number(settings.manualMultiplier) ||
+        2,
+    ];
+  }
+
+  const filled = plan
+    .map((value, index) => ({
+      value,
+      slot: index + 1,
+    }))
+    .filter(
+      (entry) => entry.value !== null,
+    );
+
+  const nextEntry =
+    filled[
+      Number(
+        settings.adminPlanCursor || 0,
+      ) % (filled.length || 1)
+    ];
+
   return `
     <p class="modebanner">
       Current round #${game.id}:
@@ -653,19 +661,77 @@ function gameForm() {
         </select>
       </label>
 
-      ${field(
-        "Admin target multiplier (1.00–50.00x)",
-        "multiplier",
-        settings.manualMultiplier,
-        "number",
-        'min="1" max="50" step="0.01" required',
-      )}
+      <fieldset class="planfieldset">
+        <legend>
+          Admin target multipliers (1.00–50.00x)
+        </legend>
+
+        <p class="muted">
+          Fill any of the 50 boxes.
+          Empty boxes are skipped.
+        </p>
+
+        <div class="multipliergrid">
+          ${Array.from(
+            { length: 50 },
+            (_, index) => `
+              <label>
+                <span>#${index + 1}</span>
+
+                <input
+                  name="target${index}"
+                  type="number"
+                  min="1"
+                  max="50"
+                  step="0.01"
+                  inputmode="decimal"
+                  autocomplete="off"
+                  placeholder="—"
+                  aria-label="Multiplier box ${index + 1}"
+                  value="${
+                    plan[index] == null
+                      ? ""
+                      : esc(
+                          Number(
+                            plan[index],
+                          ).toFixed(2),
+                        )
+                  }"
+                >
+              </label>
+            `,
+          ).join("")}
+        </div>
+      </fieldset>
 
       <p class="muted">
-        In Admin Control, each new round
-        uses this target until you change
-        it or select Random. Targets are
-        fixed before betting starts.
+        Current round box:
+        ${
+          game.mode === "ADMIN" &&
+          game.planSlot
+            ? "#" + game.planSlot
+            : "—"
+        }.
+
+        Next saved box:
+        ${
+          nextEntry
+            ? "#" + nextEntry.slot
+            : "—"
+        }.
+
+        Save starts the updated plan from
+        its first filled box at the next countdown.
+      </p>
+
+      <p class="muted">
+        Admin Control uses the filled boxes
+        in numbered order, one per round.
+        After the last filled box, it repeats
+        from the first filled box.
+        The plan continues until you save
+        a new plan or select Random.
+        Targets are fixed before betting starts.
         Simulation balance only.
       </p>
 
@@ -705,46 +771,42 @@ function render() {
         <h4>ADMIN PANEL</h4>
 
         <nav>
-          ${pages
-            .map(
-              (title, index) => `
-                <button
-                  data-page="${index}"
-                  class="${
-                    page === title
-                      ? "green"
-                      : ""
-                  }"
-                >
-                  ${esc(title)}
+          ${pages.map(
+            (title, index) => `
+              <button
+                data-page="${index}"
+                class="${
+                  page === title
+                    ? "green"
+                    : ""
+                }"
+              >
+                ${esc(title)}
 
-                  ${
-                    title ===
-                    "Deposit Requests"
+                ${
+                  title === "Deposit Requests"
+                    ? `
+                      <span
+                        class="navcount"
+                        id="depositCount"
+                      >
+                        ${data.summary.deposits}
+                      </span>
+                    `
+                    : title === "Withdrawal Requests"
                       ? `
                         <span
                           class="navcount"
-                          id="depositCount"
+                          id="withdrawalCount"
                         >
-                          ${data.summary.deposits}
+                          ${data.summary.withdrawals}
                         </span>
                       `
-                      : title ===
-                          "Withdrawal Requests"
-                        ? `
-                          <span
-                            class="navcount"
-                            id="withdrawalCount"
-                          >
-                            ${data.summary.withdrawals}
-                          </span>
-                        `
-                        : ""
-                  }
-                </button>
-              `,
-            )
-            .join("")}
+                      : ""
+                }
+              </button>
+            `,
+          ).join("")}
         </nav>
 
         <button
@@ -787,14 +849,8 @@ function render() {
 
   if (page === "Dashboard") {
     const stats = [
-      [
-        "Customers",
-        data.users.length,
-      ],
-      [
-        "Total Amount Credited",
-        data.coins,
-      ],
+      ["Customers", data.users.length],
+      ["Total Amount Credited", data.coins],
       [
         "Pending Deposits",
         data.summary.deposits,
@@ -807,9 +863,7 @@ function render() {
 
     html = `
       <div class="portalLinks card">
-        <h2>
-          Separate Portal Links
-        </h2>
+        <h2>Separate Portal Links</h2>
 
         <p>
           Customer:
@@ -829,31 +883,26 @@ function render() {
       </div>
 
       <div class="stats">
-        ${stats
-          .map(
-            ([title, value]) => `
-              <div class="card">
-                <span>${title}</span>
+        ${stats.map(
+          ([title, value]) => `
+            <div class="card">
+              <span>${title}</span>
 
-                <b>
-                  ${
-                    title ===
-                    "Total Amount Credited"
-                      ? money(value)
-                      : num(value)
-                  }
-                </b>
-              </div>
-            `,
-          )
-          .join("")}
+              <b>
+                ${
+                  title === "Total Amount Credited"
+                    ? money(value)
+                    : num(value)
+                }
+              </b>
+            </div>
+          `,
+        ).join("")}
       </div>
 
       <div class="admingrid">
         <section class="card">
-          <h2>
-            Latest Customer Requests
-          </h2>
+          <h2>Latest Customer Requests</h2>
 
           ${reqTable(
             data.requests.slice(0, 6),
@@ -949,7 +998,6 @@ function render() {
     html = `
       <section class="card">
         <h2>Add / Deduct Balance</h2>
-
         ${usersTable()}
       </section>
 
@@ -965,41 +1013,31 @@ function render() {
               <th>Time</th>
             </tr>
 
-            ${data.ledger
-              .map(
-                (entry) => `
-                  <tr>
-                    <td>
-                      ${esc(
-                        entry.username,
-                      )}
-                    </td>
+            ${data.ledger.map(
+              (entry) => `
+                <tr>
+                  <td>
+                    ${esc(entry.username)}
+                  </td>
 
-                    <td>
-                      ${money(
-                        entry.amount,
-                      )}
-                    </td>
+                  <td>
+                    ${money(entry.amount)}
+                  </td>
 
-                    <td>
-                      ${esc(
-                        ledgerLabel(
-                          entry.note,
-                        ),
-                      )}
-                    </td>
+                  <td>
+                    ${esc(
+                      ledgerLabel(entry.note),
+                    )}
+                  </td>
 
-                    <td>
-                      ${esc(
-                        when(
-                          entry.created,
-                        ),
-                      )}
-                    </td>
-                  </tr>
-                `,
-              )
-              .join("")}
+                  <td>
+                    ${esc(
+                      when(entry.created),
+                    )}
+                  </td>
+                </tr>
+              `,
+            ).join("")}
           </table>
         </div>
       </section>
@@ -1046,7 +1084,6 @@ function render() {
     html = `
       <section class="card">
         <h2>Customer Deposit Details</h2>
-
         ${paymentsForm()}
       </section>
     `;
@@ -1056,7 +1093,6 @@ function render() {
     html = `
       <section class="card">
         <h2>Random / Admin Control</h2>
-
         ${gameForm()}
       </section>
     `;
@@ -1076,37 +1112,31 @@ function render() {
               <th>Time</th>
             </tr>
 
-            ${data.audit
-              .map(
-                (entry) => `
-                  <tr>
-                    <td>
-                      ${esc(entry.action)}
-                    </td>
+            ${data.audit.map(
+              (entry) => `
+                <tr>
+                  <td>
+                    ${esc(entry.action)}
+                  </td>
 
-                    <td>
-                      ${esc(entry.target)}
-                    </td>
+                  <td>
+                    ${esc(entry.target)}
+                  </td>
 
-                    <td>
-                      ${esc(
-                        ledgerLabel(
-                          entry.note,
-                        ),
-                      )}
-                    </td>
+                  <td>
+                    ${esc(
+                      ledgerLabel(entry.note),
+                    )}
+                  </td>
 
-                    <td>
-                      ${esc(
-                        when(
-                          entry.created,
-                        ),
-                      )}
-                    </td>
-                  </tr>
-                `,
-              )
-              .join("")}
+                  <td>
+                    ${esc(
+                      when(entry.created),
+                    )}
+                  </td>
+                </tr>
+              `,
+            ).join("")}
           </table>
         </div>
       </section>
@@ -1179,9 +1209,7 @@ function render() {
 
       await load();
 
-      toast(
-        "Bank / QR details saved",
-      );
+      toast("Bank / QR details saved");
     },
   );
 
@@ -1210,20 +1238,31 @@ function render() {
   formHandler(
     "#gamecontrol",
     async (body) => {
+      const targets = Array.from(
+        { length: 50 },
+        (_, index) => {
+          const value = String(
+            body["target" + index] || "",
+          ).trim();
+
+          return value === ""
+            ? null
+            : Number(value);
+        },
+      );
+
       await api(
         "admin/game",
         {
           mode: body.mode,
-          multiplier: Number(
-            body.multiplier,
-          ),
+          targets,
         },
       );
 
       await load();
 
       toast(
-        "Saved. Applies from the next countdown.",
+        "Plan saved. Starts at the first filled box from the next countdown.",
       );
     },
   );
@@ -1241,71 +1280,67 @@ function usersTable() {
         </tr>
 
         ${
-          data.users
-            .map(
-              (user) => `
-                <tr>
-                  <td>
-                    ${esc(user.full_name)}
+          data.users.map(
+            (user) => `
+              <tr>
+                <td>
+                  ${esc(user.full_name)}
 
-                    <small>
-                      ID:
-                      ${esc(user.username)}
-                    </small>
-                  </td>
+                  <small>
+                    ID:
+                    ${esc(user.username)}
+                  </small>
+                </td>
 
-                  <td>
-                    ${money(user.balance)}
-                  </td>
+                <td>
+                  ${money(user.balance)}
+                </td>
 
-                  <td>
+                <td>
+                  ${
+                    user.blocked
+                      ? "BLOCKED"
+                      : "ACTIVE"
+                  }
+
+                  ${
+                    user.must_change
+                      ? `
+                        <small>
+                          Password change required
+                        </small>
+                      `
+                      : ""
+                  }
+                </td>
+
+                <td class="actionbuttons">
+                  <button
+                    class="green mini"
+                    data-coins="${user.id}"
+                  >Manage Balance</button>
+
+                  <button
+                    class="wine mini"
+                    data-block="${user.id},${
+                      user.blocked ? 0 : 1
+                    }"
+                  >
                     ${
                       user.blocked
-                        ? "BLOCKED"
-                        : "ACTIVE"
+                        ? "Unblock"
+                        : "Block"
                     }
+                  </button>
 
-                    ${
-                      user.must_change
-                        ? `
-                          <small>
-                            Password change required
-                          </small>
-                        `
-                        : ""
-                    }
-                  </td>
-
-                  <td class="actionbuttons">
-                    <button
-                      class="green mini"
-                      data-coins="${user.id}"
-                    >Manage Balance</button>
-
-                    <button
-                      class="wine mini"
-                      data-block="${user.id},${
-                        user.blocked
-                          ? 0
-                          : 1
-                      }"
-                    >
-                      ${
-                        user.blocked
-                          ? "Unblock"
-                          : "Block"
-                      }
-                    </button>
-
-                    <button
-                      class="mini"
-                      data-reset="${user.id}"
-                    >Reset Password</button>
-                  </td>
-                </tr>
-              `,
-            )
-            .join("") ||
+                  <button
+                    class="mini"
+                    data-reset="${user.id}"
+                  >Reset Password</button>
+                </td>
+              </tr>
+            `,
+          ).join("") ||
           `
             <tr>
               <td colspan="4">
@@ -1396,16 +1431,14 @@ function review(id) {
       </p>
 
       <div class="bankdetails">
-        ${Object.entries(details)
-          .map(
-            ([key, value]) => `
-              <p>
-                <b>${esc(key)}:</b>
-                ${esc(value)}
-              </p>
-            `,
-          )
-          .join("")}
+        ${Object.entries(details).map(
+          ([key, value]) => `
+            <p>
+              <b>${esc(key)}:</b>
+              ${esc(value)}
+            </p>
+          `,
+        ).join("")}
 
         <p>
           <b>Note:</b>
@@ -1486,9 +1519,7 @@ function review(id) {
             <p>
               Reviewed:
               ${esc(
-                when(
-                  request.reviewed_at,
-                ),
+                when(request.reviewed_at),
               )}
             </p>
           `
@@ -1547,7 +1578,6 @@ app.addEventListener(
         );
 
         me = null;
-
         loginScreen();
       } else if (
         button.hasAttribute(
@@ -1567,9 +1597,7 @@ app.addEventListener(
         undefined
       ) {
         page = pages[
-          Number(
-            button.dataset.page,
-          )
+          Number(button.dataset.page)
         ];
 
         requestRows = [];
@@ -1656,10 +1684,8 @@ app.addEventListener(
               "admin/customer",
               {
                 id,
-                action:
-                  "reset-password",
-                password:
-                  body.password,
+                action: "reset-password",
+                password: body.password,
               },
             );
 
@@ -1685,8 +1711,7 @@ app.addEventListener(
           );
 
         show(
-          "Wallet · " +
-            user.username,
+          "Wallet · " + user.username,
           `
             <p>
               Available:
@@ -1752,9 +1777,7 @@ app.addEventListener(
 
             await load();
 
-            toast(
-              "Balance updated",
-            );
+            toast("Balance updated");
           },
         );
       }
@@ -1812,21 +1835,16 @@ async function poll() {
 
 try {
   me = (
-    await api(
-      "me?portal=admin",
-    )
+    await api("me?portal=admin")
   ).user;
 
-  if (
-    me?.role === "admin"
-  ) {
+  if (me?.role === "admin") {
     await load();
   } else {
     loginScreen();
   }
 } catch (error) {
   loginScreen();
-
   toast(error.message);
 }
 
