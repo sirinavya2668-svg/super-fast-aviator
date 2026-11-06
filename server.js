@@ -11,8 +11,7 @@ import {
 import fs from "node:fs";
 import path from "node:path";
 
-const dir =
-  process.env.DATA_DIR || "./data";
+const dir = process.env.DATA_DIR || "./data";
 
 fs.mkdirSync(dir, {
   recursive: true,
@@ -106,8 +105,7 @@ function tx(callback) {
 }
 
 function hash(password) {
-  const salt =
-    randomBytes(16).toString("hex");
+  const salt = randomBytes(16).toString("hex");
 
   const value = scryptSync(
     password,
@@ -119,8 +117,7 @@ function hash(password) {
 }
 
 function valid(password, stored) {
-  const [salt, value] =
-    stored.split(":");
+  const [salt, value] = stored.split(":");
 
   return timingSafeEqual(
     Buffer.from(value, "hex"),
@@ -128,8 +125,7 @@ function valid(password, stored) {
   );
 }
 
-const adminPassword =
-  process.env.ADMIN_PASSWORD;
+const adminPassword = process.env.ADMIN_PASSWORD;
 
 if (
   !adminPassword ||
@@ -142,8 +138,7 @@ if (
 }
 
 const adminName =
-  process.env.ADMIN_USERNAME ||
-  "admin";
+  process.env.ADMIN_USERNAME || "admin";
 
 const existingAdmin = one(
   "SELECT * FROM users WHERE role='admin'",
@@ -185,16 +180,14 @@ const defaultSettings = {
     "Cash out before the plane flies away. " +
     "If it flies away first, your stake is lost. " +
     "Each round is randomly simulated on the server. " +
-    "Losing bonus applies to lost stakes. " +
-    "Welcome bonus applies to the first approved demo deposit. " +
-    "Promo code is redeemable once after an approved deposit.",
+    "Welcome, promo and losing bonuses are added only by the administrator. " +
+    "No bonus is credited automatically. Losing bonus requires admin review of losses of ₹10,000 or more.",
 
   support: "",
 };
 
 for (
-  const [key, value]
-  of Object.entries(defaultSettings)
+  const [key, value] of Object.entries(defaultSettings)
 ) {
   run(
     "INSERT OR IGNORE INTO settings VALUES(?,?)",
@@ -206,10 +199,7 @@ for (
 function settings() {
   return Object.fromEntries(
     q("SELECT * FROM settings").map(
-      (item) => [
-        item.key,
-        item.value,
-      ],
+      (item) => [item.key, item.value],
     ),
   );
 }
@@ -263,8 +253,6 @@ function buildRound(id) {
       ? "ADMIN"
       : "RANDOM";
 
-  // One plan entry per new countdown.
-  // Current waiting/flying rounds stay locked.
   const target =
     mode === "ADMIN"
       ? takeAdminTarget({
@@ -280,10 +268,7 @@ function buildRound(id) {
   return {
     id,
     phase: "WAITING",
-
-    // Betting window: 10 seconds.
     start: Date.now() + 10000,
-
     end: 0,
     crash: 1,
     mode,
@@ -317,16 +302,14 @@ function begin() {
     round.crash = round.fixed;
   } else {
     const randomValue =
-      randomInt(0, 1000000) /
-      1000000;
+      randomInt(0, 1000000) / 1000000;
 
     round.crash = Math.min(
       50,
       Math.max(
         1,
         Math.floor(
-          (0.97 / (1 - randomValue)) *
-            100,
+          (0.97 / (1 - randomValue)) * 100,
         ) / 100,
       ),
     );
@@ -339,13 +322,11 @@ function multiplier() {
   }
 
   const seconds =
-    (Date.now() - round.start) /
-    1000;
+    (Date.now() - round.start) / 1000;
 
   return (
     Math.floor(
-      Math.exp(seconds * 0.16) *
-        100,
+      Math.exp(seconds * 0.16) * 100,
     ) / 100
   );
 }
@@ -374,9 +355,6 @@ function advance() {
         round.mode,
       );
 
-      const percentage =
-        Number(settings().losing);
-
       const activeBets = q(
         `SELECT *
          FROM bets
@@ -391,18 +369,8 @@ function advance() {
           bet.id,
         );
 
-        const bonus = Math.floor(
-          (bet.stake * percentage) /
-            100,
-        );
-
-        if (bonus) {
-          credit(
-            bet.user_id,
-            bonus,
-            "Losing demo bonus",
-          );
-        }
+        // Losing bonus is not automatically credited.
+        // Only admin can add it through manual bonuses.
       }
     });
 
@@ -414,16 +382,11 @@ function advance() {
     round.phase === "CRASHED" &&
     Date.now() >= round.end
   ) {
-    round = buildRound(
-      round.id + 1,
-    );
+    round = buildRound(round.id + 1);
   }
 }
 
-const roundTimer = setInterval(
-  advance,
-  80,
-);
+const roundTimer = setInterval(advance, 80);
 
 roundTimer.unref();
 
@@ -433,39 +396,27 @@ const limits = new Map();
 setInterval(() => {
   const now = Date.now();
 
-  for (
-    const [token, session]
-    of sessions
-  ) {
+  for (const [token, session] of sessions) {
     if (session.exp < now) {
       sessions.delete(token);
     }
   }
 
-  for (
-    const [key, limit]
-    of limits
-  ) {
+  for (const [key, limit] of limits) {
     if (limit.exp < now) {
       limits.delete(key);
     }
   }
 }, 60000).unref();
 
-function fail(
-  message,
-  status = 400,
-) {
+function fail(message, status = 400) {
   throw Object.assign(
     new Error(message),
     { status },
   );
 }
 
-function amount(
-  value,
-  minimum = 100,
-) {
+function amount(value, minimum = 100) {
   if (
     !Number.isSafeInteger(value) ||
     value < minimum ||
@@ -487,8 +438,7 @@ function safeUser(user) {
     balance: user.balance,
     blocked: user.blocked,
     fullName: user.full_name,
-    mustChangePassword:
-      !!user.must_change,
+    mustChangePassword: !!user.must_change,
   };
 }
 
@@ -500,10 +450,7 @@ async function body(req) {
     size += chunk.length;
 
     if (size > 2400000) {
-      fail(
-        "Request too large",
-        413,
-      );
+      fail("Request too large", 413);
     }
 
     chunks.push(chunk);
@@ -513,8 +460,7 @@ async function body(req) {
 
   try {
     value = JSON.parse(
-      Buffer.concat(chunks)
-        .toString("utf8") ||
+      Buffer.concat(chunks).toString("utf8") ||
         "{}",
     );
   } catch {
@@ -526,41 +472,38 @@ async function body(req) {
     typeof value !== "object" ||
     Array.isArray(value)
   ) {
-    fail(
-      "JSON object required.",
-    );
+    fail("JSON object required.");
   }
 
   return value;
 }
 
-const features =
-  createAdminFeatures({
-    db,
-    q,
-    one,
-    run,
-    tx,
-    hash,
-    valid,
-    credit,
-    settings,
-    sessions,
-    fail,
-    amount,
+const features = createAdminFeatures({
+  db,
+  q,
+  one,
+  run,
+  tx,
+  hash,
+  valid,
+  credit,
+  settings,
+  sessions,
+  fail,
+  amount,
 
-    getGame: () => ({
-      id: round.id,
-      phase: round.phase,
-      mode: round.mode,
-      planSlot: round.planSlot,
+  getGame: () => ({
+    id: round.id,
+    phase: round.phase,
+    mode: round.mode,
+    planSlot: round.planSlot,
 
-      mult:
-        round.phase === "CRASHED"
-          ? round.crash
-          : multiplier(),
-    }),
-  });
+    mult:
+      round.phase === "CRASHED"
+        ? round.crash
+        : multiplier(),
+  }),
+});
 
 const server = http.createServer(
   async (req, res) => {
@@ -605,9 +548,7 @@ const server = http.createServer(
         return;
       }
 
-      if (
-        !route.startsWith("/api/")
-      ) {
+      if (!route.startsWith("/api/")) {
         const files = {
           "/": "index.html",
           "/admin": "admin.html",
@@ -625,24 +566,14 @@ const server = http.createServer(
           fail("Not found", 404);
         }
 
-        let contentType =
-          "text/html";
+        let contentType = "text/html";
 
-        if (
-          file.endsWith(".js")
-        ) {
-          contentType =
-            "text/javascript";
-        } else if (
-          file.endsWith(".css")
-        ) {
-          contentType =
-            "text/css";
-        } else if (
-          file.endsWith(".svg")
-        ) {
-          contentType =
-            "image/svg+xml";
+        if (file.endsWith(".js")) {
+          contentType = "text/javascript";
+        } else if (file.endsWith(".css")) {
+          contentType = "text/css";
+        } else if (file.endsWith(".svg")) {
+          contentType = "image/svg+xml";
         }
 
         res.setHeader(
@@ -672,23 +603,16 @@ const server = http.createServer(
         "no-store",
       );
 
-      const post =
-        req.method === "POST";
+      const post = req.method === "POST";
 
       if (
-        !["GET", "POST"].includes(
-          req.method,
-        )
+        !["GET", "POST"].includes(req.method)
       ) {
-        fail(
-          "Method not allowed",
-          405,
-        );
+        fail("Method not allowed", 405);
       }
 
       if (post) {
-        const origin =
-          req.headers.origin;
+        const origin = req.headers.origin;
 
         if (
           origin &&
@@ -697,26 +621,18 @@ const server = http.createServer(
           origin !==
             `http://${req.headers.host}`
         ) {
-          fail(
-            "Invalid origin",
-            403,
-          );
+          fail("Invalid origin", 403);
         }
 
         const contentType =
-          req.headers[
-            "content-type"
-          ] || "";
+          req.headers["content-type"] || "";
 
         if (
           !contentType.startsWith(
             "application/json",
           )
         ) {
-          fail(
-            "JSON required",
-            415,
-          );
+          fail("JSON required", 415);
         }
       }
 
@@ -725,42 +641,29 @@ const server = http.createServer(
         : {};
 
       const adminPortal =
-        route.startsWith(
-          "/api/admin/",
-        ) ||
-        url.searchParams.get(
-          "portal",
-        ) === "admin" ||
+        route.startsWith("/api/admin/") ||
+        url.searchParams.get("portal") ===
+          "admin" ||
         data.admin === true;
 
-      const cookieName =
-        adminPortal
-          ? "sfa_admin_session"
-          : "sfa_session";
+      const cookieName = adminPortal
+        ? "sfa_admin_session"
+        : "sfa_session";
 
-      const cookies =
-        Object.fromEntries(
-          (
-            req.headers.cookie ||
-            ""
-          )
-            .split(";")
-            .map((item) =>
-              item
-                .trim()
-                .split("="),
-            ),
-        );
+      const cookies = Object.fromEntries(
+        (req.headers.cookie || "")
+          .split(";")
+          .map((item) =>
+            item.trim().split("="),
+          ),
+      );
 
-      let token =
-        cookies[cookieName];
+      let token = cookies[cookieName];
 
-      const session =
-        sessions.get(token);
+      const session = sessions.get(token);
 
       let user =
-        session &&
-        session.exp > Date.now()
+        session && session.exp > Date.now()
           ? one(
               `SELECT *
                FROM users
@@ -774,20 +677,16 @@ const server = http.createServer(
       }
 
       if (
-        route.startsWith(
-          "/api/media/",
-        ) &&
+        route.startsWith("/api/media/") &&
         !post
       ) {
-        const adminSession =
-          sessions.get(
-            cookies.sfa_admin_session,
-          );
+        const adminSession = sessions.get(
+          cookies.sfa_admin_session,
+        );
 
         const adminUser =
           adminSession &&
-          adminSession.exp >
-            Date.now()
+          adminSession.exp > Date.now()
             ? one(
                 `SELECT *
                  FROM users
@@ -798,13 +697,10 @@ const server = http.createServer(
               )
             : null;
 
-        const file =
-          features.media(
-            route.slice(
-              "/api/media/".length,
-            ),
-            adminUser || user,
-          );
+        const file = features.media(
+          route.slice("/api/media/".length),
+          adminUser || user,
+        );
 
         res.setHeader(
           "Content-Type",
@@ -816,10 +712,7 @@ const server = http.createServer(
           "inline",
         );
 
-        res.end(
-          Buffer.from(file.bytes),
-        );
-
+        res.end(Buffer.from(file.bytes));
         return;
       }
 
@@ -851,19 +744,14 @@ const server = http.createServer(
         const key =
           ip +
           "|" +
-          String(
-            data.username || "",
-          )
+          String(data.username || "")
             .toLowerCase()
             .slice(0, 30);
 
-        const limit =
-          limits.get(key) || {
-            n: 0,
-            exp:
-              Date.now() +
-              900000,
-          };
+        const limit = limits.get(key) || {
+          n: 0,
+          exp: Date.now() + 900000,
+        };
 
         limit.n += 1;
 
@@ -898,9 +786,7 @@ const server = http.createServer(
           );
         }
 
-        if (
-          route === "/api/signup"
-        ) {
+        if (route === "/api/signup") {
           const exists = one(
             `SELECT id
              FROM users
@@ -947,8 +833,7 @@ const server = http.createServer(
 
         if (
           adminPortal &&
-          foundUser.role !==
-            "admin"
+          foundUser.role !== "admin"
         ) {
           fail(
             "Admin account required",
@@ -958,8 +843,7 @@ const server = http.createServer(
 
         if (
           !adminPortal &&
-          foundUser.role !==
-            "customer"
+          foundUser.role !== "customer"
         ) {
           fail(
             "Use /admin for administrator login.",
@@ -967,16 +851,13 @@ const server = http.createServer(
           );
         }
 
-        token = randomBytes(
-          32,
-        ).toString("hex");
+        token = randomBytes(32).toString(
+          "hex",
+        );
 
         sessions.set(token, {
           id: foundUser.id,
-
-          exp:
-            Date.now() +
-            8 * 3600000,
+          exp: Date.now() + 8 * 3600000,
         });
 
         const secure =
@@ -991,8 +872,7 @@ const server = http.createServer(
         );
 
         output = {
-          user:
-            safeUser(foundUser),
+          user: safeUser(foundUser),
         };
       } else if (
         [
@@ -1018,39 +898,28 @@ const server = http.createServer(
         };
       } else {
         if (!user) {
-          fail(
-            "Please log in.",
-            401,
-          );
+          fail("Please log in.", 401);
         }
 
         if (
-          route.startsWith(
-            "/api/admin/",
-          )
+          route.startsWith("/api/admin/")
         ) {
-          if (
-            user.role !== "admin"
-          ) {
+          if (user.role !== "admin") {
             fail(
               "Admin access required",
               403,
             );
           }
 
-          output =
-            features.admin(
-              route,
-              post,
-              data,
-              url,
-              user,
-            );
+          output = features.admin(
+            route,
+            post,
+            data,
+            url,
+            user,
+          );
         } else {
-          if (
-            user.role !==
-            "customer"
-          ) {
+          if (user.role !== "customer") {
             fail(
               "Customer account required",
               403,
@@ -1059,8 +928,7 @@ const server = http.createServer(
 
           if (
             user.must_change &&
-            route !==
-              "/api/password"
+            route !== "/api/password"
           ) {
             fail(
               "Change your temporary password first.",
@@ -1071,8 +939,7 @@ const server = http.createServer(
           advance();
 
           if (
-            route ===
-              "/api/state" &&
+            route === "/api/state" &&
             !post
           ) {
             output = {
@@ -1116,16 +983,14 @@ const server = http.createServer(
                             1000,
                         ),
 
-                countdown:
-                  Math.max(
-                    0,
-                    Math.ceil(
-                      (
-                        round.start -
-                        Date.now()
-                      ) / 1000,
-                    ),
+                countdown: Math.max(
+                  0,
+                  Math.ceil(
+                    (round.start -
+                      Date.now()) /
+                      1000,
                   ),
+                ),
               },
 
               history: q(`
@@ -1167,8 +1032,7 @@ const server = http.createServer(
             if (
               round.phase !==
                 "WAITING" ||
-              data.roundId !==
-                round.id
+              data.roundId !== round.id
             ) {
               fail(
                 "Betting closed. Wait for the next round.",
@@ -1181,27 +1045,22 @@ const server = http.createServer(
             );
 
             if (
-              ![1, 2].includes(
-                data.panel,
-              )
+              ![1, 2].includes(data.panel)
             ) {
-              fail(
-                "Invalid bet panel",
-              );
+              fail("Invalid bet panel");
             }
 
             tx(() => {
-              const duplicate =
-                one(
-                  `SELECT id
-                   FROM bets
-                   WHERE user_id=?
-                   AND round_id=?
-                   AND panel=?`,
-                  user.id,
-                  round.id,
-                  data.panel,
-                );
+              const duplicate = one(
+                `SELECT id
+                 FROM bets
+                 WHERE user_id=?
+                 AND round_id=?
+                 AND panel=?`,
+                user.id,
+                round.id,
+                data.panel,
+              );
 
               if (duplicate) {
                 fail(
@@ -1209,17 +1068,14 @@ const server = http.createServer(
                 );
               }
 
-              const balance =
-                one(
-                  `SELECT balance
-                   FROM users
-                   WHERE id=?`,
-                  user.id,
-                ).balance;
+              const balance = one(
+                `SELECT balance
+                 FROM users
+                 WHERE id=?`,
+                user.id,
+              ).balance;
 
-              if (
-                balance < stake
-              ) {
+              if (balance < stake) {
                 fail(
                   "Insufficient balance.",
                 );
@@ -1245,15 +1101,13 @@ const server = http.createServer(
               );
             });
           } else if (
-            route ===
-              "/api/cashout" &&
+            route === "/api/cashout" &&
             post
           ) {
             advance();
 
             if (
-              round.phase !==
-              "FLYING"
+              round.phase !== "FLYING"
             ) {
               fail(
                 "Cash out unavailable.",
@@ -1283,19 +1137,14 @@ const server = http.createServer(
                 multiplier();
 
               if (
-                current >=
-                round.crash
+                current >= round.crash
               ) {
-                fail(
-                  "Round ended.",
-                );
+                fail("Round ended.");
               }
 
-              const payout =
-                Math.floor(
-                  bet.stake *
-                    current,
-                );
+              const payout = Math.floor(
+                bet.stake * current,
+              );
 
               run(
                 `UPDATE bets
@@ -1315,8 +1164,7 @@ const server = http.createServer(
               );
             });
           } else if (
-            route ===
-              "/api/request" &&
+            route === "/api/request" &&
             post
           ) {
             output =
@@ -1325,8 +1173,7 @@ const server = http.createServer(
                 user,
               );
           } else if (
-            route ===
-              "/api/password" &&
+            route === "/api/password" &&
             post
           ) {
             output =
@@ -1335,8 +1182,7 @@ const server = http.createServer(
                 user,
               );
           } else if (
-            route ===
-              "/api/account" &&
+            route === "/api/account" &&
             !post
           ) {
             output = {
@@ -1359,90 +1205,30 @@ const server = http.createServer(
               ),
             };
           } else if (
-            route ===
-              "/api/promo" &&
+            route === "/api/promo" &&
             post
           ) {
-            tx(() => {
-              const currentSettings =
-                settings();
+            const code = String(
+              data.code || "",
+            )
+              .trim()
+              .toUpperCase();
 
-              const code = String(
-                data.code || "",
-              )
-                .trim()
-                .toUpperCase();
+            if (
+              code !==
+              settings().promoCode
+            ) {
+              fail("Invalid promo code");
+            }
 
-              if (
-                code !==
-                currentSettings.promoCode
-              ) {
-                fail(
-                  "Invalid promo code",
-                );
-              }
+            output = {
+              manualRequired: true,
 
-              const claimed =
-                one(
-                  `SELECT *
-                   FROM claims
-                   WHERE user_id=?
-                   AND code=?`,
-                  user.id,
-                  code,
-                );
-
-              if (claimed) {
-                fail(
-                  "Code already used.",
-                );
-              }
-
-              const deposit =
-                one(
-                  `SELECT *
-                   FROM requests
-                   WHERE user_id=?
-                   AND type='DEPOSIT'
-                   AND status='SUCCESS'
-                   ORDER BY id
-                   LIMIT 1`,
-                  user.id,
-                );
-
-              if (!deposit) {
-                fail(
-                  "An approved demo deposit is required first.",
-                );
-              }
-
-              run(
-                "INSERT INTO claims VALUES(?,?)",
-                user.id,
-                code,
-              );
-
-              const bonus =
-                Math.floor(
-                  (
-                    deposit.amount *
-                    Number(
-                      currentSettings.promo,
-                    )
-                  ) / 100,
-                );
-
-              credit(
-                user.id,
-                bonus,
-                "Promo demo bonus",
-              );
-            });
+              message:
+                "Promo code is valid. Contact admin to add the bonus. No automatic credit.",
+            };
           } else {
-            fail(
-              "Not found",
-              404,
-            );
+            fail("Not found", 404);
           }
         }
       }
@@ -1468,18 +1254,14 @@ const server = http.createServer(
       );
 
       if (!error.status) {
-        console.error(
-          error.message,
-        );
+        console.error(error.message);
       }
     }
   },
 );
 
 server.listen(
-  Number(
-    process.env.PORT || 3000,
-  ),
+  Number(process.env.PORT || 3000),
   "0.0.0.0",
   () => {
     console.log(
