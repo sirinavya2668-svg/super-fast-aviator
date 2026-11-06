@@ -1,5 +1,5 @@
 // Bonuses are credited only by an authenticated administrator.
-export function createManualBonuses(ctx) {
+export async function createManualBonuses(ctx) {
   const {
     db,
     one,
@@ -7,11 +7,11 @@ export function createManualBonuses(ctx) {
     tx,
     credit,
     fail,
-    audit,
+    audit
   } = ctx;
 
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS manual_bonus_credits (
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS manual_bonus_credits(
       id INTEGER PRIMARY KEY,
       request_key TEXT UNIQUE NOT NULL,
       user_id INTEGER NOT NULL REFERENCES users(id),
@@ -24,7 +24,7 @@ export function createManualBonuses(ctx) {
     )
   `);
 
-  return function addBonus(data, admin) {
+  return async function addBonus(data, admin) {
     if (admin?.role !== "admin" || admin.blocked) {
       fail("Admin access required", 403);
     }
@@ -32,15 +32,9 @@ export function createManualBonuses(ctx) {
     const id = Number(data.id);
     const kind = data.kind;
     const amount = data.amount;
-
-    const note = String(data.note || "")
-      .trim()
-      .slice(0, 300);
-
+    const note = String(data.note || "").trim().slice(0, 300);
     const key = String(data.requestKey || "");
-
-    const loss =
-      kind === "LOSING" ? data.lossAmount : null;
+    const loss = kind === "LOSING" ? data.lossAmount : null;
 
     if (!Number.isSafeInteger(id) || id < 1) {
       fail("Choose a customer.");
@@ -56,7 +50,7 @@ export function createManualBonuses(ctx) {
       amount > 25000
     ) {
       fail(
-        "Bonus amount must be a whole amount from ₹1 to ₹25,000.",
+        "Bonus amount must be a whole amount from ₹1 to ₹25,000."
       );
     }
 
@@ -76,15 +70,13 @@ export function createManualBonuses(ctx) {
         loss > 1000000000
       )
     ) {
-      fail(
-        "Enter the reviewed loss amount, ₹10,000 or more.",
-      );
+      fail("Enter the reviewed loss amount, ₹10,000 or more.");
     }
 
-    return tx(() => {
-      const previous = one(
+    return await tx(async () => {
+      const previous = await one(
         "SELECT * FROM manual_bonus_credits WHERE request_key=?",
-        key,
+        key
       );
 
       if (previous) {
@@ -98,65 +90,62 @@ export function createManualBonuses(ctx) {
         ) {
           fail(
             "This request key was already used for a different bonus.",
-            409,
+            409
           );
         }
 
         return {
           id: previous.id,
-          alreadyAdded: true,
+          alreadyAdded: true
         };
       }
 
-      const customer = one(
+      const customer = await one(
         "SELECT id FROM users WHERE id=? AND role='customer'",
-        id,
+        id
       );
 
       if (!customer) {
         fail("Customer not found.");
       }
 
-      const result = run(
-        `
-          INSERT INTO manual_bonus_credits (
-            request_key,
-            user_id,
-            admin_id,
-            kind,
-            amount,
-            loss_amount,
-            note
-          )
-          VALUES (?, ?, ?, ?, ?, ?, ?)
-        `,
+      const result = await run(
+        `INSERT INTO manual_bonus_credits(
+          request_key,
+          user_id,
+          admin_id,
+          kind,
+          amount,
+          loss_amount,
+          note
+        ) VALUES(?,?,?,?,?,?,?)`,
         key,
         id,
         admin.id,
         kind,
         amount,
         loss,
-        note,
+        note
       );
 
-      credit(
+      await credit(
         id,
         amount,
-        "Manual " + kind.toLowerCase() + " bonus",
+        "Manual " + kind.toLowerCase() + " bonus"
       );
 
-      audit(
+      await audit(
         admin.id,
         "MANUAL_" + kind + "_BONUS",
         id,
         `Amount: ₹${amount}; reviewed loss: ${
           loss === null ? "N/A" : "₹" + loss
-        }; ${note}`,
+        }; ${note}`
       );
 
       return {
         id: Number(result.lastInsertRowid),
-        alreadyAdded: false,
+        alreadyAdded: false
       };
     });
   };
