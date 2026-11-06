@@ -155,7 +155,7 @@ p {
   font-style: italic;
 }
 
-/* Welcome page */
+/* Welcome */
 
 .welcome {
   min-height: 100svh;
@@ -758,7 +758,7 @@ dialog::backdrop {
   min-width: 0;
 }
 
-/* Admin statistics */
+/* Statistics */
 
 .stats {
   display: grid;
@@ -861,7 +861,7 @@ select {
   margin-top: 24px;
 }
 
-/* Deposit details and images */
+/* Bank details and images */
 
 .bankdetails {
   border: 1px solid #385255;
@@ -926,7 +926,7 @@ input[type="file"] {
   font-size: 13px;
 }
 
-/* Admin notifications and actions */
+/* Notifications and actions */
 
 .navcount {
   display: inline-block;
@@ -968,7 +968,7 @@ input[type="file"] {
   margin-bottom: 20px;
 }
 
-/* Random / Admin Control mode */
+/* Mode information */
 
 .modebanner {
   padding: 10px 14px;
@@ -1231,7 +1231,7 @@ input[type="file"] {
   }
 }
 
-/* Flight follows the server round clock */
+/* Flight follows server timing */
 
 .flightplot {
   position: absolute;
@@ -1268,7 +1268,7 @@ input[type="file"] {
   animation: none;
 }
 
-/* Rupee amount input */
+/* Rupee input */
 
 .stakevalue {
   flex: 1;
@@ -1288,4 +1288,70 @@ input[type="file"] {
 
 .stakevalue input {
   padding-left: 24px;
+}
+
+/* 50 multiplier boxes: five per row */
+
+.planfieldset {
+  min-width: 0;
+  margin: 20px 0;
+  padding: 0;
+  border: 0;
+}
+
+.planfieldset legend {
+  font-size: 16px;
+  font-weight: 750;
+  margin-bottom: 12px;
+}
+
+.multipliergrid {
+  display: grid;
+  grid-template-columns:
+    repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.multipliergrid label {
+  min-width: 0;
+}
+
+.multipliergrid label > span {
+  display: block;
+  color: var(--wine);
+  font-size: 11px;
+  margin-bottom: 4px;
+}
+
+.multipliergrid input {
+  width: 100%;
+  min-width: 0;
+  padding: 10px 3px;
+  margin: 0;
+  text-align: center;
+  font-size: 15px;
+  font-weight: 700;
+  appearance: textfield;
+}
+
+.multipliergrid input::-webkit-inner-spin-button {
+  appearance: none;
+}
+
+.multipliergrid input:focus {
+  outline: 2px solid var(--green);
+  outline-offset: 1px;
+}
+
+/* Compact mode information and sound button */
+
+.gamemodecompact {
+  flex-basis: 100%;
+  font-size: 11px;
+  color: #a9bbbb;
+}
+
+[data-sound][aria-pressed="true"] {
+  background: var(--green);
+  color: white;
 }
