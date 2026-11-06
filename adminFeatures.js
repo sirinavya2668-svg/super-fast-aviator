@@ -3,6 +3,7 @@ import {
   normalizePlan,
   savedPlan,
 } from "./gamePlan.js";
+
 import { randomBytes } from "node:crypto";
 
 export function createAdminFeatures(ctx) {
@@ -41,6 +42,23 @@ export function createAdminFeatures(ctx) {
     "full_name",
     "TEXT DEFAULT ''",
   );
+
+  column("users", "promo_code", "TEXT DEFAULT ''");
+  db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS users_customer_promo_unique
+    ON users(promo_code) WHERE promo_code <> ''`);
+
+  function customerPromo(value, exceptId = 0) {
+    if (value === undefined || value === null || value === "") return "";
+    if (typeof value !== "string") fail("Enter a valid promo code.");
+    const code = value.trim().toUpperCase();
+    if (!/^[A-Z0-9_-]{3,30}$/.test(code)) {
+      fail("Promo code: 3–30 letters, numbers, hyphens or underscores.");
+    }
+    if (one("SELECT id FROM users WHERE promo_code=? AND id<>?", code, exceptId)) {
+      fail("This promo code is already assigned to another customer.", 409);
+    }
+    return code;
+  }
 
   column(
     "users",
@@ -103,53 +121,16 @@ export function createAdminFeatures(ctx) {
     );
   `);
 
-  const addManualBonus =
-    createManualBonuses({
-      ...ctx,
-      audit,
-    });
-
+  const addManualBonus = createManualBonuses({ ...ctx, audit });
   const ruleReplacements = [
-    [
-      "Losing bonus applies to lost stakes.",
-      "Losing bonus is added only by admin after review of losses of ₹10,000 or more.",
-    ],
-    [
-      "Welcome bonus applies to the first approved demo deposit.",
-      "Welcome bonus is added only by admin; deposit approval does not add a bonus automatically.",
-    ],
-    [
-      "Promo code is redeemable once after an approved deposit.",
-      "Promo codes are checked for validity; only admin can add the promo bonus.",
-    ],
+    ["Losing bonus applies to lost stakes.", "Losing bonus is added only by admin after review of losses of ₹10,000 or more."],
+    ["Welcome bonus applies to the first approved demo deposit.", "Welcome bonus is added only by admin; deposit approval does not add a bonus automatically."],
+    ["Promo code is redeemable once after an approved deposit.", "Promo codes are checked for validity; only admin can add the promo bonus."],
   ];
-
   let manualRules = settings().rules;
-
-  for (
-    const [before, after]
-    of ruleReplacements
-  ) {
-    manualRules =
-      manualRules.replace(
-        before,
-        after,
-      );
-  }
-
-  if (
-    !manualRules.includes(
-      "No bonus is credited automatically.",
-    )
-  ) {
-    manualRules +=
-      " No bonus is credited automatically.";
-  }
-
-  run(
-    "UPDATE settings SET value=? WHERE key='rules'",
-    manualRules,
-  );
+  for (const [before, after] of ruleReplacements) manualRules = manualRules.replace(before, after);
+  if (!manualRules.includes("No bonus is credited automatically.")) manualRules += " No bonus is credited automatically.";
+  run("UPDATE settings SET value=? WHERE key='rules'", manualRules);
 
   const savedRules =
     settings().rules;
@@ -410,26 +391,10 @@ export function createAdminFeatures(ctx) {
     const values = [];
     const where = [];
 
-    const customerFilter =
-      url.searchParams.get(
-        "userId",
-      );
-
+    const customerFilter = url.searchParams.get("userId");
     if (customerFilter) {
-      const customerId =
-        Number(customerFilter);
-
-      if (
-        !Number.isSafeInteger(
-          customerId,
-        ) ||
-        customerId < 1
-      ) {
-        fail(
-          "Invalid customer filter.",
-        );
-      }
-
+      const customerId = Number(customerFilter);
+      if (!Number.isSafeInteger(customerId) || customerId < 1) fail("Invalid customer filter.");
       where.push("r.user_id=?");
       values.push(customerId);
     }
@@ -533,14 +498,8 @@ export function createAdminFeatures(ctx) {
     url,
     user,
   ) {
-    if (
-      route === "/api/admin/bonus" &&
-      post
-    ) {
-      return addManualBonus(
-        data,
-        user,
-      );
+    if (route === "/api/admin/bonus" && post) {
+      return addManualBonus(data, user);
     }
 
     if (
@@ -687,7 +646,8 @@ export function createAdminFeatures(ctx) {
             full_name,
             balance,
             blocked,
-            must_change
+            must_change,
+            promo_code
           FROM users
           WHERE role='customer'
           ORDER BY id DESC
@@ -753,8 +713,9 @@ export function createAdminFeatures(ctx) {
         "/api/admin/create-customer" &&
       post
     ) {
-      const fullName =
-        text(data.fullName);
+      const fullName = text(
+        data.fullName,
+      );
 
       const username = text(
         data.username,
@@ -797,16 +758,19 @@ export function createAdminFeatures(ctx) {
       }
 
       const id = tx(() => {
+        const promoCode = customerPromo(data.promoCode);
         const result = run(
           `INSERT INTO users(
             username,
             password,
             full_name,
-            must_change
-          ) VALUES(?,?,?,1)`,
+            must_change,
+            promo_code
+          ) VALUES(?,?,?,1,?)`,
           username,
           hash(temporaryPassword),
           fullName,
+          promoCode,
         );
 
         const customerId =
@@ -818,6 +782,7 @@ export function createAdminFeatures(ctx) {
           user.id,
           "CREATE_CUSTOMER",
           customerId,
+          "Promo code: " + (promoCode || "Not assigned"),
         );
 
         return customerId;
@@ -826,6 +791,7 @@ export function createAdminFeatures(ctx) {
       return {
         id,
         username,
+        promoCode: one("SELECT promo_code FROM users WHERE id=?", id).promo_code,
         mustChangePassword: true,
       };
     }
@@ -891,7 +857,6 @@ export function createAdminFeatures(ctx) {
 
           credit(
             customer.id,
-
             isCredit
               ? coins
               : -coins,
@@ -911,6 +876,13 @@ export function createAdminFeatures(ctx) {
             customer.id,
             `${coins} coins: ${note}`,
           );
+        });
+      } else if (data.action === "set-promo") {
+        tx(() => {
+          const promoCode = customerPromo(data.promoCode, customer.id);
+          run("UPDATE users SET promo_code=? WHERE id=?", promoCode, customer.id);
+          audit(user.id, "SET_CUSTOMER_PROMO", customer.id,
+            "Promo code: " + (promoCode || "Removed"));
         });
       } else if (
         data.action === "block"
