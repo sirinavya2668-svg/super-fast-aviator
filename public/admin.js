@@ -18,9 +18,7 @@ const esc = (value) =>
   );
 
 const num = (value) =>
-  Number(value || 0).toLocaleString(
-    "en-IN",
-  );
+  Number(value || 0).toLocaleString("en-IN");
 
 const money = (value) =>
   "₹" + num(value);
@@ -92,8 +90,7 @@ async function api(route, body) {
 
       headers: body
         ? {
-            "Content-Type":
-              "application/json",
+            "Content-Type": "application/json",
           }
         : {},
 
@@ -126,11 +123,13 @@ function show(title, html) {
   modal.innerHTML = `
     <div class="dialoghead">
       <h2>${esc(title)}</h2>
+
       <button
         data-close
         aria-label="Close"
       >×</button>
     </div>
+
     ${html}
   `;
 
@@ -143,9 +142,7 @@ modal.addEventListener(
   "click",
   (event) => {
     if (
-      event.target.closest(
-        "[data-close]",
-      )
+      event.target.closest("[data-close]")
     ) {
       modal.close();
     }
@@ -162,6 +159,7 @@ function field(
   return `
     <label>
       ${label}
+
       <input
         name="${name}"
         type="${type}"
@@ -192,9 +190,7 @@ async function readImage(file) {
 
       reader.onerror = () =>
         reject(
-          new Error(
-            "Could not read image",
-          ),
+          new Error("Could not read image"),
         );
 
       reader.readAsDataURL(file);
@@ -249,7 +245,6 @@ function loginScreen() {
       ${brand()}
 
       <h1>ADMIN PANEL</h1>
-
       <p>Separate administrator login</p>
 
       <form id="adminlogin">
@@ -589,8 +584,7 @@ function gameForm() {
 
   if (!Array.isArray(plan)) {
     plan = [
-      Number(settings.manualMultiplier) ||
-        2,
+      Number(settings.manualMultiplier) || 2,
     ];
   }
 
@@ -603,12 +597,11 @@ function gameForm() {
       (entry) => entry.value !== null,
     );
 
-  const nextEntry =
-    filled[
-      Number(
-        settings.adminPlanCursor || 0,
-      ) % (filled.length || 1)
-    ];
+  const nextEntry = filled[
+    Number(
+      settings.adminPlanCursor || 0,
+    ) % (filled.length || 1)
+  ];
 
   return `
     <p class="modebanner">
@@ -760,6 +753,10 @@ async function load() {
   );
 
   render();
+
+  if (page === "Wallet Management") {
+    await loadRequests();
+  }
 }
 
 function render() {
@@ -929,9 +926,7 @@ function render() {
             Deposit Information
           </h3>
 
-          <p>
-            Bank details, UPI and QR image
-          </p>
+          <p>Bank details, UPI and QR image</p>
 
           <button
             class="green"
@@ -992,13 +987,87 @@ function render() {
         ${usersTable()}
       </section>
     `;
-  } else if (
-    page === "Wallet Management"
-  ) {
+  } else if (page === "Wallet Management") {
     html = `
       <section class="card">
         <h2>Add / Deduct Balance</h2>
         ${usersTable()}
+      </section>
+
+      <section class="card spaced">
+        <h2>
+          Customer Deposit / Withdrawal History
+        </h2>
+
+        <div class="requestfilters">
+          <label>
+            Customer
+
+            <select id="walletcustomer">
+              <option value="">All Customers</option>
+
+              ${data.users.map(
+                (user) => `
+                  <option value="${user.id}">
+                    ${esc(user.username)}${
+                      user.full_name
+                        ? " · " + esc(user.full_name)
+                        : ""
+                    }
+                  </option>
+                `,
+              ).join("")}
+            </select>
+          </label>
+
+          <label>
+            Request Type
+
+            <select id="wallettype">
+              <option value="">
+                Deposit + Withdrawal
+              </option>
+              <option value="DEPOSIT">
+                Deposit
+              </option>
+              <option value="WITHDRAWAL">
+                Withdrawal
+              </option>
+            </select>
+          </label>
+
+          <label>
+            Status
+
+            <select id="requeststatus">
+              <option value="">All</option>
+              <option value="PENDING">
+                Pending
+              </option>
+              <option value="SUCCESS">
+                Approved / Success
+              </option>
+              <option value="REJECTED">
+                Rejected
+              </option>
+            </select>
+          </label>
+
+          <button
+            class="green mini"
+            data-filter
+          >SHOW HISTORY</button>
+        </div>
+
+        <div id="requesttable">
+          ${reqTable(requestRows)}
+        </div>
+
+        <button
+          data-more
+          class="outline"
+          ${next ? "" : "hidden"}
+        >Load Older Requests</button>
       </section>
 
       <section class="card spaced">
@@ -1042,9 +1111,7 @@ function render() {
         </div>
       </section>
     `;
-  } else if (
-    page.includes(" Requests")
-  ) {
+  } else if (page.includes(" Requests")) {
     html = `
       <section class="card">
         <div class="requestfilters">
@@ -1078,27 +1145,21 @@ function render() {
         >Load Older Requests</button>
       </section>
     `;
-  } else if (
-    page === "Deposit Details / QR"
-  ) {
+  } else if (page === "Deposit Details / QR") {
     html = `
       <section class="card">
         <h2>Customer Deposit Details</h2>
         ${paymentsForm()}
       </section>
     `;
-  } else if (
-    page === "Game Control"
-  ) {
+  } else if (page === "Game Control") {
     html = `
       <section class="card">
         <h2>Random / Admin Control</h2>
         ${gameForm()}
       </section>
     `;
-  } else if (
-    page === "Audit Log"
-  ) {
+  } else if (page === "Audit Log") {
     html = `
       <section class="card">
         <h2>Admin Actions</h2>
@@ -1208,7 +1269,6 @@ function render() {
       );
 
       await load();
-
       toast("Bank / QR details saved");
     },
   );
@@ -1224,13 +1284,9 @@ function render() {
         body[key] = Number(body[key]);
       }
 
-      await api(
-        "admin/settings",
-        body,
-      );
+      await api("admin/settings", body);
 
       await load();
-
       toast("Settings saved");
     },
   );
@@ -1358,9 +1414,16 @@ async function loadRequests(
   older = false,
 ) {
   const type =
-    page.startsWith("Deposit")
-      ? "DEPOSIT"
-      : "WITHDRAWAL";
+    page === "Wallet Management"
+      ? $("#wallettype")?.value || ""
+      : page.startsWith("Deposit")
+        ? "DEPOSIT"
+        : "WITHDRAWAL";
+
+  const customer =
+    page === "Wallet Management"
+      ? $("#walletcustomer")?.value || ""
+      : "";
 
   const status =
     $("#requeststatus")?.value || "";
@@ -1371,7 +1434,7 @@ async function loadRequests(
       : "";
 
   const result = await api(
-    `admin/requests?type=${type}&status=${status}${before}`,
+    `admin/requests?type=${type}&status=${status}&userId=${encodeURIComponent(customer)}${before}`,
   );
 
   requestRows = older
@@ -1539,12 +1602,9 @@ function review(id) {
       );
 
       modal.close();
-
       await load();
 
-      if (
-        page.includes(" Requests")
-      ) {
+      if (page.includes(" Requests")) {
         await loadRequests();
       }
 
@@ -1572,10 +1632,7 @@ app.addEventListener(
           "data-logout",
         )
       ) {
-        await api(
-          "admin/logout",
-          {},
-        );
+        await api("admin/logout", {});
 
         me = null;
         loginScreen();
@@ -1587,14 +1644,11 @@ app.addEventListener(
       ) {
         await load();
 
-        if (
-          page.includes(" Requests")
-        ) {
+        if (page.includes(" Requests")) {
           await loadRequests();
         }
       } else if (
-        button.dataset.page !==
-        undefined
+        button.dataset.page !== undefined
       ) {
         page = pages[
           Number(button.dataset.page)
@@ -1605,9 +1659,7 @@ app.addEventListener(
 
         await load();
 
-        if (
-          page.includes(" Requests")
-        ) {
+        if (page.includes(" Requests")) {
           await loadRequests();
         }
       } else if (
@@ -1634,9 +1686,7 @@ app.addEventListener(
         button.dataset.block
       ) {
         const [id, blocked] =
-          button.dataset.block.split(
-            ",",
-          );
+          button.dataset.block.split(",");
 
         await api(
           "admin/customer",
@@ -1690,7 +1740,6 @@ app.addEventListener(
             );
 
             modal.close();
-
             await load();
 
             toast(
@@ -1705,10 +1754,12 @@ app.addEventListener(
           button.dataset.coins,
         );
 
-        const user =
-          data.users.find(
-            (item) => item.id === id,
-          );
+        const bonusRequestKey =
+          crypto.randomUUID();
+
+        const user = data.users.find(
+          (item) => item.id === id,
+        );
 
         show(
           "Wallet · " + user.username,
@@ -1730,16 +1781,45 @@ app.addEventListener(
                   <option value="debit">
                     Deduct Balance
                   </option>
+
+                  <option value="bonus-WELCOME">
+                    Add Welcome Bonus
+                  </option>
+
+                  <option value="bonus-PROMO">
+                    Add Promo Code Bonus
+                  </option>
+
+                  <option value="bonus-LOSING">
+                    Add Losing Bonus
+                  </option>
                 </select>
               </label>
 
               ${field(
-                "Amount (₹100–₹25,000)",
+                "Amount (₹1–₹25,000)",
                 "amount",
                 1000,
                 "number",
-                'required min="100" max="25000" step="1"',
+                'required min="1" max="25000" step="1"',
               )}
+
+              ${field(
+                "Reviewed loss amount (Losing Bonus only)",
+                "lossAmount",
+                10000,
+                "number",
+                'min="10000" max="1000000000" step="1"',
+              )}
+
+              <p class="muted">
+                Balance adjustments start at ₹100;
+                bonus credits start at ₹1.
+                All bonuses are manual.
+                For Losing Bonus, record the reviewed
+                loss of ₹10,000 or more.
+                Enter the bonus amount separately above.
+              </p>
 
               ${field(
                 "Reason / Note",
@@ -1762,19 +1842,39 @@ app.addEventListener(
         formHandler(
           "#coinsform",
           async (body) => {
-            await api(
-              "admin/customer",
-              {
-                id,
-                ...body,
-                amount: Number(
-                  body.amount,
-                ),
-              },
-            );
+            if (
+              body.action.startsWith(
+                "bonus-",
+              )
+            ) {
+              await api(
+                "admin/bonus",
+                {
+                  id,
+                  kind:
+                    body.action.slice(6),
+                  amount:
+                    Number(body.amount),
+                  lossAmount:
+                    Number(body.lossAmount),
+                  note: body.note,
+                  requestKey:
+                    bonusRequestKey,
+                },
+              );
+            } else {
+              await api(
+                "admin/customer",
+                {
+                  id,
+                  ...body,
+                  amount:
+                    Number(body.amount),
+                },
+              );
+            }
 
             modal.close();
-
             await load();
 
             toast("Balance updated");
