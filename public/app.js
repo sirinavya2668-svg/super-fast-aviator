@@ -2,7 +2,7 @@ import {
   flightPoint,
   elapsedAt,
   GameAudio,
-} from "/flight.js";
+} from "/flight.js?v=20261106-sound2";
 
 const $ = (selector) =>
   document.querySelector(selector);
@@ -46,11 +46,10 @@ function startFlight() {
       return;
     }
 
-    const snapshot =
-      flightSnapshot || {
-        phase: "WAITING",
-        elapsedMs: 0,
-      };
+    const snapshot = flightSnapshot || {
+      phase: "WAITING",
+      elapsedMs: 0,
+    };
 
     const point = flightPoint(
       elapsedAt(
@@ -620,6 +619,22 @@ function renderGame() {
       <header class="gamehead">
         ${logo()}
 
+        <button
+          class="mini outline"
+          data-sound
+          aria-label="${
+            gameAudio.enabled
+              ? "Turn sound off"
+              : "Turn sound on"
+          }"
+          title="${
+            gameAudio.enabled
+              ? "Sound ON"
+              : "Sound OFF"
+          }"
+          aria-pressed="${gameAudio.enabled}"
+        >${gameAudio.enabled ? "🔊" : "🔇"}</button>
+
         <div class="balance">
           <b id="balance">
             ${num(me.balance)}
@@ -629,11 +644,6 @@ function renderGame() {
             BALANCE ·
             ${esc(me.username)}
           </small>
-
-          <small
-            id="demomode"
-            class="gamemodecompact"
-          >Simulation</small>
         </div>
       </header>
 
@@ -700,11 +710,6 @@ function renderGame() {
         <span>Simulation balance</span>
 
         <button
-          data-sound
-          aria-pressed="${gameAudio.enabled}"
-        >${gameAudio.enabled ? "Sound ON" : "Sound OFF"}</button>
-
-        <button
           data-account
         >History</button>
 
@@ -759,11 +764,6 @@ async function refresh() {
 
     state = snapshot;
     me = state.user;
-
-    $("#demomode").textContent =
-      state.round.mode === "ADMIN"
-        ? "Simulation · Admin-set outcomes"
-        : "Simulation · Random outcomes";
 
     $("#balance").textContent =
       num(me.balance);
@@ -1351,6 +1351,7 @@ function info(kind) {
           );
 
           modal.close();
+
           toast("Promo bonus credited");
 
           await refresh();
@@ -1500,8 +1501,35 @@ app.addEventListener(
 
         button.textContent =
           gameAudio.enabled
+            ? "🔊"
+            : "🔇";
+
+        button.title =
+          gameAudio.enabled
             ? "Sound ON"
             : "Sound OFF";
+
+        button.setAttribute(
+          "aria-label",
+          gameAudio.enabled
+            ? "Turn sound off"
+            : "Turn sound on",
+        );
+
+        toast(
+          gameAudio.enabled
+            ? "Sound ON"
+            : "Sound OFF",
+        );
+
+        if (gameAudio.enabled) {
+          gameAudio.tone(
+            880,
+            880,
+            0.18,
+            0.08,
+          );
+        }
 
         button.setAttribute(
           "aria-pressed",
