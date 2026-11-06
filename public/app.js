@@ -2,7 +2,7 @@ import {
   flightPoint,
   elapsedAt,
   GameAudio,
-} from "/flight.js?v=20261106-manualbonus";
+} from "/flight.js?v=20261106-support";
 
 const $ = (selector) =>
   document.querySelector(selector);
@@ -208,6 +208,27 @@ function bonuses() {
   `;
 }
 
+function whatsappIcon() {
+  return `
+    <svg
+      viewBox="0 0 24 24"
+      width="24"
+      height="24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.8"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+      focusable="false"
+      style="vertical-align:middle;margin-right:8px;flex-shrink:0"
+    >
+      <path d="M20.5 11.5a8.5 8.5 0 0 1-12.6 7.4L3 20.5l1.5-4.8A8.5 8.5 0 1 1 20.5 11.5Z"/>
+      <path d="M8.2 7.3c.3-.2.7-.2.9.2l.8 1.8c.1.3 0 .5-.2.7l-.6.6c.7 1.4 1.8 2.5 3.3 3.2l.6-.7c.2-.2.4-.3.7-.2l1.8.9c.3.2.4.5.3.8-.3 1-1.1 1.6-2.1 1.5-3.7-.5-6.7-3.4-7.1-7.1-.1-.8.6-1.5 1.6-1.7Z"/>
+    </svg>
+  `;
+}
+
 function support() {
   if (config.support) {
     window.open(
@@ -294,7 +315,7 @@ function welcome() {
         <button
           class="support wine"
           data-support
-        >24/7 CUSTOMER SUPPORT</button>
+        >${whatsappIcon()}24/7 CUSTOMER SUPPORT</button>
 
         <p class="muted demofoot">
           Simulation balance
@@ -304,13 +325,44 @@ function welcome() {
   `;
 }
 
+function signupWhatsApp() {
+  let url;
+
+  try {
+    url = new URL(String(config.support || ""));
+  } catch {
+    toast("Admin must configure a WhatsApp support link before signup.");
+    return;
+  }
+
+  if (
+    url.protocol !== "https:" ||
+    url.hostname !== "wa.me" ||
+    url.port ||
+    url.username ||
+    url.password ||
+    !/^\/[1-9][0-9]{7,14}\/?$/.test(url.pathname)
+  ) {
+    toast("Admin must configure a WhatsApp link with country code, such as https://wa.me/91XXXXXXXXXX.");
+    return;
+  }
+
+  const chat = new URL("https://wa.me" + url.pathname);
+  chat.searchParams.set(
+    "text",
+    "Hello, I would like to request a Super Fast Aviator customer ID.",
+  );
+  window.location.assign(chat.href);
+}
+
 function auth(mode = "login") {
-  const signup = mode === "signup";
+  if (mode === "signup") {
+    signupWhatsApp();
+    return;
+  }
 
   show(
-    signup
-      ? "Create Customer Account"
-      : "Customer Login",
+    "Customer Login",
     `
       <form id="authform">
         <label>
@@ -332,11 +384,7 @@ function auth(mode = "login") {
           <input
             name="password"
             type="password"
-            autocomplete="${
-              signup
-                ? "new-password"
-                : "current-password"
-            }"
+            autocomplete="current-password"
             minlength="8"
             maxlength="128"
             required
@@ -351,7 +399,7 @@ function auth(mode = "login") {
         <button
           class="green full"
           type="submit"
-        >${signup ? "SIGN UP" : "LOGIN"}</button>
+        >LOGIN</button>
 
         <p
           class="error"
@@ -382,10 +430,7 @@ function auth(mode = "login") {
             new FormData(event.target),
           );
 
-        const result = await api(
-          signup ? "signup" : "login",
-          data,
-        );
+        const result = await api("login", data);
 
         me = result.user;
         modal.close();
@@ -726,7 +771,7 @@ function renderGame() {
         <button
           data-support
           aria-label="Customer support"
-        >24/7 Support</button>
+        >${whatsappIcon()}24/7 Support</button>
       </footer>
     </main>
   `;
@@ -1065,13 +1110,6 @@ async function request(type) {
       ? "Deposit Request"
       : "Withdrawal Request",
     `
-      <p>
-        Simulation balance.
-        This screen records simulation requests;
-        it does not send money or verify
-        bank payments.
-      </p>
-
       ${deposit ? payment : ""}
 
       <form id="reqform">
@@ -1262,7 +1300,8 @@ async function request(type) {
     };
 }
 
-function info(kind) {
+async function info(kind) {
+  config = await api("public");
   if (kind === "rules") {
     show(
       "Rules",
@@ -1311,10 +1350,12 @@ function info(kind) {
       `
         <form id="promoform">
           <label>
-            Enter promo code
+            Admin Promo Code
 
             <input
               name="code"
+              value="${esc(config.promoCode || "")}"
+              readonly
               required
               maxlength="30"
             >
@@ -1578,7 +1619,7 @@ app.addEventListener(
       } else if (
         button.dataset.info
       ) {
-        info(button.dataset.info);
+        await info(button.dataset.info);
       } else if (
         button.hasAttribute(
           "data-account",
