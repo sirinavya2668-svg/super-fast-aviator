@@ -1,8 +1,8 @@
+import { createManualBonuses } from "./manualBonus.js";
 import {
   normalizePlan,
   savedPlan,
 } from "./gamePlan.js";
-
 import { randomBytes } from "node:crypto";
 
 export function createAdminFeatures(ctx) {
@@ -102,6 +102,54 @@ export function createAdminFeatures(ctx) {
       created TEXT DEFAULT CURRENT_TIMESTAMP
     );
   `);
+
+  const addManualBonus =
+    createManualBonuses({
+      ...ctx,
+      audit,
+    });
+
+  const ruleReplacements = [
+    [
+      "Losing bonus applies to lost stakes.",
+      "Losing bonus is added only by admin after review of losses of ₹10,000 or more.",
+    ],
+    [
+      "Welcome bonus applies to the first approved demo deposit.",
+      "Welcome bonus is added only by admin; deposit approval does not add a bonus automatically.",
+    ],
+    [
+      "Promo code is redeemable once after an approved deposit.",
+      "Promo codes are checked for validity; only admin can add the promo bonus.",
+    ],
+  ];
+
+  let manualRules = settings().rules;
+
+  for (
+    const [before, after]
+    of ruleReplacements
+  ) {
+    manualRules =
+      manualRules.replace(
+        before,
+        after,
+      );
+  }
+
+  if (
+    !manualRules.includes(
+      "No bonus is credited automatically.",
+    )
+  ) {
+    manualRules +=
+      " No bonus is credited automatically.";
+  }
+
+  run(
+    "UPDATE settings SET value=? WHERE key='rules'",
+    manualRules,
+  );
 
   const savedRules =
     settings().rules;
@@ -362,6 +410,30 @@ export function createAdminFeatures(ctx) {
     const values = [];
     const where = [];
 
+    const customerFilter =
+      url.searchParams.get(
+        "userId",
+      );
+
+    if (customerFilter) {
+      const customerId =
+        Number(customerFilter);
+
+      if (
+        !Number.isSafeInteger(
+          customerId,
+        ) ||
+        customerId < 1
+      ) {
+        fail(
+          "Invalid customer filter.",
+        );
+      }
+
+      where.push("r.user_id=?");
+      values.push(customerId);
+    }
+
     const filters = [
       [
         "type",
@@ -461,6 +533,16 @@ export function createAdminFeatures(ctx) {
     url,
     user,
   ) {
+    if (
+      route === "/api/admin/bonus" &&
+      post
+    ) {
+      return addManualBonus(
+        data,
+        user,
+      );
+    }
+
     if (
       route === "/api/admin/game" &&
       !post
@@ -653,7 +735,10 @@ export function createAdminFeatures(ctx) {
             'Approved demo deposit',
             'Welcome demo bonus',
             'Promo demo bonus',
-            'Losing demo bonus'
+            'Losing demo bonus',
+            'Manual welcome bonus',
+            'Manual promo bonus',
+            'Manual losing bonus'
           )
         `).n,
 
@@ -668,9 +753,8 @@ export function createAdminFeatures(ctx) {
         "/api/admin/create-customer" &&
       post
     ) {
-      const fullName = text(
-        data.fullName,
-      );
+      const fullName =
+        text(data.fullName);
 
       const username = text(
         data.username,
@@ -807,6 +891,7 @@ export function createAdminFeatures(ctx) {
 
           credit(
             customer.id,
+
             isCredit
               ? coins
               : -coins,
@@ -1127,40 +1212,11 @@ export function createAdminFeatures(ctx) {
           data.status ===
             "SUCCESS"
         ) {
-          const first = !one(
-            `SELECT id
-             FROM requests
-             WHERE user_id=?
-             AND type='DEPOSIT'
-             AND status='SUCCESS'`,
-            request.user_id,
-          );
-
           credit(
             request.user_id,
             request.amount,
             "Approved demo deposit",
           );
-
-          if (first) {
-            const bonus =
-              Math.floor(
-                (
-                  request.amount *
-                  Number(
-                    settings().welcome,
-                  )
-                ) / 100,
-              );
-
-            if (bonus) {
-              credit(
-                request.user_id,
-                bonus,
-                "Welcome demo bonus",
-              );
-            }
-          }
         }
 
         if (
