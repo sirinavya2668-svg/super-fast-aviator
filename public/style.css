@@ -155,7 +155,7 @@ p {
   font-style: italic;
 }
 
-/* Welcome */
+/* Welcome page */
 
 .welcome {
   min-height: 100svh;
@@ -758,7 +758,7 @@ dialog::backdrop {
   min-width: 0;
 }
 
-/* Statistics */
+/* Admin statistics */
 
 .stats {
   display: grid;
@@ -861,7 +861,7 @@ select {
   margin-top: 24px;
 }
 
-/* Bank details and images */
+/* Deposit bank details and images */
 
 .bankdetails {
   border: 1px solid #385255;
@@ -926,7 +926,7 @@ input[type="file"] {
   font-size: 13px;
 }
 
-/* Notifications and actions */
+/* Admin notifications and actions */
 
 .navcount {
   display: inline-block;
@@ -968,7 +968,7 @@ input[type="file"] {
   margin-bottom: 20px;
 }
 
-/* Mode information */
+/* Random / Admin Control mode */
 
 .modebanner {
   padding: 10px 14px;
@@ -990,6 +990,8 @@ input[type="file"] {
   font-size: 10px;
   letter-spacing: 0.4px;
 }
+
+/* Flight animation */
 
 @keyframes float {
   50% {
@@ -1231,127 +1233,25 @@ input[type="file"] {
   }
 }
 
-/* Flight follows server timing */
+/* Server-synchronised flight and rupee amount input. */
+.flightplot { position:absolute; inset:10px 12px 20px; pointer-events:none; }
+.flightplot #flyingplane { position:absolute; right:auto; width:clamp(60px,14vw,92px); height:auto; max-width:none; z-index:2; transition:none; animation:none; opacity:1; translate:0 0; will-change:left,top,transform; }
+.flightplot #flyingplane.flying { animation:none; }
+.flightplot #flyingplane.gone { opacity:0; translate:120px -80px; transition:opacity .35s,translate .6s; animation:none; }
+.stakevalue { flex:1; min-width:0; position:relative; }
+.stakecurrency { position:absolute; left:9px; top:50%; transform:translateY(-50%); font-size:18px; color:var(--green); pointer-events:none; }
+.stakevalue input { padding-left:24px; }
 
-.flightplot {
-  position: absolute;
-  inset: 10px 12px 20px;
-  pointer-events: none;
-}
+/* Fifty compact multiplier boxes: five per row. */
+.planfieldset { min-width:0; margin:20px 0; padding:0; border:0; }
+.planfieldset legend { font-size:16px; font-weight:750; margin-bottom:12px; }
+.multipliergrid { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:8px; }
+.multipliergrid label { min-width:0; }
+.multipliergrid label > span { display:block; color:var(--wine); font-size:11px; margin-bottom:4px; }
+.multipliergrid input { width:100%; min-width:0; padding:10px 3px; margin:0; text-align:center; font-size:15px; font-weight:700; appearance:textfield; }
+.multipliergrid input::-webkit-inner-spin-button { appearance:none; }
+.multipliergrid input:focus { outline:2px solid var(--green); outline-offset:1px; }
 
-.flightplot #flyingplane {
-  position: absolute;
-  right: auto;
-  width: clamp(60px, 14vw, 92px);
-  height: auto;
-  max-width: none;
-  z-index: 2;
-  transition: none;
-  animation: none;
-  opacity: 1;
-  translate: 0 0;
-  will-change: left, top, transform;
-}
-
-.flightplot #flyingplane.flying {
-  animation: none;
-}
-
-.flightplot #flyingplane.gone {
-  opacity: 0;
-  translate: 120px -80px;
-
-  transition:
-    opacity 0.35s,
-    translate 0.6s;
-
-  animation: none;
-}
-
-/* Rupee input */
-
-.stakevalue {
-  flex: 1;
-  min-width: 0;
-  position: relative;
-}
-
-.stakecurrency {
-  position: absolute;
-  left: 9px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 18px;
-  color: var(--green);
-  pointer-events: none;
-}
-
-.stakevalue input {
-  padding-left: 24px;
-}
-
-/* 50 multiplier boxes: five per row */
-
-.planfieldset {
-  min-width: 0;
-  margin: 20px 0;
-  padding: 0;
-  border: 0;
-}
-
-.planfieldset legend {
-  font-size: 16px;
-  font-weight: 750;
-  margin-bottom: 12px;
-}
-
-.multipliergrid {
-  display: grid;
-  grid-template-columns:
-    repeat(5, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.multipliergrid label {
-  min-width: 0;
-}
-
-.multipliergrid label > span {
-  display: block;
-  color: var(--wine);
-  font-size: 11px;
-  margin-bottom: 4px;
-}
-
-.multipliergrid input {
-  width: 100%;
-  min-width: 0;
-  padding: 10px 3px;
-  margin: 0;
-  text-align: center;
-  font-size: 15px;
-  font-weight: 700;
-  appearance: textfield;
-}
-
-.multipliergrid input::-webkit-inner-spin-button {
-  appearance: none;
-}
-
-.multipliergrid input:focus {
-  outline: 2px solid var(--green);
-  outline-offset: 1px;
-}
-
-/* Compact mode information and sound button */
-
-.gamemodecompact {
-  flex-basis: 100%;
-  font-size: 11px;
-  color: #a9bbbb;
-}
-
-[data-sound][aria-pressed="true"] {
-  background: var(--green);
-  color: white;
-}
+/* Compact, accurate game-mode disclosure; no large banner above the chart. */
+.gamemodecompact { flex-basis:100%; font-size:11px; color:#a9bbbb; }
+[data-sound][aria-pressed="true"] { background:var(--green); color:white; }
