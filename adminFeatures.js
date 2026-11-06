@@ -96,6 +96,25 @@ export function createAdminFeatures(ctx) {
     );
   `);
 
+  const savedRules = settings().rules;
+
+  const updatedRules = savedRules
+    .replace(
+      /Demo coins only\./gi,
+      "Simulation balance only. Amounts use the ₹ symbol for display.",
+    )
+    .replace(
+      /Virtual demo coins only\./gi,
+      "Simulation balance only.",
+    );
+
+  if (updatedRules !== savedRules) {
+    run(
+      "UPDATE settings SET value=? WHERE key='rules'",
+      updatedRules,
+    );
+  }
+
   const previousRules = settings().rules;
 
   const oldRule =
@@ -241,11 +260,7 @@ export function createAdminFeatures(ctx) {
     };
   }
 
-  function storeImage(
-    data,
-    user,
-    kind,
-  ) {
+  function storeImage(data, user, kind) {
     const image = imageData(data);
 
     const id = randomBytes(20).toString(
@@ -309,28 +324,18 @@ export function createAdminFeatures(ctx) {
       [
         "type",
         "r.type",
-        [
-          "DEPOSIT",
-          "WITHDRAWAL",
-        ],
+        ["DEPOSIT", "WITHDRAWAL"],
       ],
       [
         "status",
         "r.status",
-        [
-          "PENDING",
-          "SUCCESS",
-          "REJECTED",
-        ],
+        ["PENDING", "SUCCESS", "REJECTED"],
       ],
     ];
 
     for (
-      const [
-        parameter,
-        field,
-        allowed,
-      ] of filters
+      const [parameter, field, allowed]
+      of filters
     ) {
       const value =
         url.searchParams.get(parameter);
@@ -345,9 +350,7 @@ export function createAdminFeatures(ctx) {
       }
     }
 
-    if (
-      url.searchParams.get("before")
-    ) {
+    if (url.searchParams.get("before")) {
       where.push("r.id<?");
 
       values.push(
@@ -413,10 +416,9 @@ export function createAdminFeatures(ctx) {
       post
     ) {
       if (
-        ![
-          "RANDOM",
-          "ADMIN",
-        ].includes(data.mode)
+        !["RANDOM", "ADMIN"].includes(
+          data.mode,
+        )
       ) {
         fail(
           "Choose Random or Admin Control.",
@@ -569,16 +571,13 @@ export function createAdminFeatures(ctx) {
         30,
       ).toLowerCase();
 
-      const temporaryPassword =
-        password(
-          data.password,
-          12,
-        );
+      const temporaryPassword = password(
+        data.password,
+        12,
+      );
 
       if (!fullName) {
-        fail(
-          "Enter a customer name.",
-        );
+        fail("Enter a customer name.");
       }
 
       if (
@@ -599,9 +598,7 @@ export function createAdminFeatures(ctx) {
           username,
         )
       ) {
-        fail(
-          "Login ID already exists.",
-        );
+        fail("Login ID already exists.");
       }
 
       const id = tx(() => {
@@ -613,9 +610,7 @@ export function createAdminFeatures(ctx) {
             must_change
           ) VALUES(?,?,?,1)`,
           username,
-          hash(
-            temporaryPassword,
-          ),
+          hash(temporaryPassword),
           fullName,
         );
 
@@ -640,8 +635,7 @@ export function createAdminFeatures(ctx) {
     }
 
     if (
-      route ===
-        "/api/admin/customer" &&
+      route === "/api/admin/customer" &&
       post
     ) {
       const customer = one(
@@ -653,22 +647,15 @@ export function createAdminFeatures(ctx) {
       );
 
       if (!customer) {
-        fail(
-          "Customer not found.",
-        );
+        fail("Customer not found.");
       }
 
       if (
-        [
-          "credit",
-          "debit",
-        ].includes(
+        ["credit", "debit"].includes(
           data.action,
         )
       ) {
-        const coins = amount(
-          data.amount,
-        );
+        const coins = amount(data.amount);
 
         const note = text(
           data.note,
@@ -690,24 +677,20 @@ export function createAdminFeatures(ctx) {
           ).balance;
 
           if (
-            data.action ===
-              "debit" &&
+            data.action === "debit" &&
             balance < coins
           ) {
             fail(
-              "Customer has insufficient available demo coins.",
+              "Customer has insufficient available balance.",
             );
           }
 
           const isCredit =
-            data.action ===
-            "credit";
+            data.action === "credit";
 
           credit(
             customer.id,
-            isCredit
-              ? coins
-              : -coins,
+            isCredit ? coins : -coins,
             isCredit
               ? "Admin demo credit"
               : "Admin demo debit",
@@ -723,25 +706,18 @@ export function createAdminFeatures(ctx) {
           );
         });
       } else if (
-        data.action ===
-        "block"
+        data.action === "block"
       ) {
         run(
           `UPDATE users
            SET blocked=?
            WHERE id=?`,
-          data.blocked
-            ? 1
-            : 0,
+          data.blocked ? 1 : 0,
           customer.id,
         );
 
-        if (
-          data.blocked
-        ) {
-          revoke(
-            customer.id,
-          );
+        if (data.blocked) {
+          revoke(customer.id);
         }
 
         audit(
@@ -752,29 +728,23 @@ export function createAdminFeatures(ctx) {
           customer.id,
         );
       } else if (
-        data.action ===
-        "reset-password"
+        data.action === "reset-password"
       ) {
-        const temporaryPassword =
-          password(
-            data.password,
-            12,
-          );
+        const temporaryPassword = password(
+          data.password,
+          12,
+        );
 
         run(
           `UPDATE users
            SET password=?,
                must_change=1
            WHERE id=?`,
-          hash(
-            temporaryPassword,
-          ),
+          hash(temporaryPassword),
           customer.id,
         );
 
-        revoke(
-          customer.id,
-        );
+        revoke(customer.id);
 
         audit(
           user.id,
@@ -795,27 +765,21 @@ export function createAdminFeatures(ctx) {
         "/api/admin/payment-settings" &&
       post
     ) {
-      const clean =
-        Object.fromEntries(
-          bankKeys
-            .filter(
-              (key) =>
-                key !==
-                "qrImageId",
-            )
-            .map(
-              (key) => [
-                key,
-                text(
-                  data[key],
-                  key ===
-                    "depositInstructions"
-                    ? 600
-                    : 120,
-                ),
-              ],
+      const clean = Object.fromEntries(
+        bankKeys
+          .filter(
+            (key) => key !== "qrImageId",
+          )
+          .map((key) => [
+            key,
+            text(
+              data[key],
+              key === "depositInstructions"
+                ? 600
+                : 120,
             ),
-        );
+          ]),
+      );
 
       clean.bankIfsc =
         clean.bankIfsc.toUpperCase();
@@ -855,12 +819,8 @@ export function createAdminFeatures(ctx) {
 
       tx(() => {
         for (
-          const [
-            key,
-            value,
-          ] of Object.entries(
-            clean,
-          )
+          const [key, value]
+          of Object.entries(clean)
         ) {
           run(
             `UPDATE settings
@@ -878,14 +838,13 @@ export function createAdminFeatures(ctx) {
           data.removeQr ||
           data.qrImage
         ) {
-          const imageId =
-            data.qrImage
-              ? storeImage(
-                  data.qrImage,
-                  user,
-                  "qr",
-                )
-              : "";
+          const imageId = data.qrImage
+            ? storeImage(
+                data.qrImage,
+                user,
+                "qr",
+              )
+            : "";
 
           run(
             `UPDATE settings
@@ -894,9 +853,7 @@ export function createAdminFeatures(ctx) {
             imageId,
           );
 
-          if (
-            previousImage
-          ) {
+          if (previousImage) {
             run(
               `DELETE FROM media
                WHERE id=?
@@ -917,8 +874,7 @@ export function createAdminFeatures(ctx) {
     }
 
     if (
-      route ===
-        "/api/admin/settings" &&
+      route === "/api/admin/settings" &&
       post
     ) {
       for (
@@ -929,9 +885,7 @@ export function createAdminFeatures(ctx) {
         ]
       ) {
         if (
-          !Number.isInteger(
-            data[key],
-          ) ||
+          !Number.isInteger(data[key]) ||
           data[key] < 0 ||
           data[key] > 100
         ) {
@@ -943,8 +897,7 @@ export function createAdminFeatures(ctx) {
 
       if (
         !/^[A-Z0-9_-]{3,30}$/.test(
-          data.promoCode ||
-            "",
+          data.promoCode || "",
         )
       ) {
         fail(
@@ -953,13 +906,10 @@ export function createAdminFeatures(ctx) {
       }
 
       if (
-        String(
-          data.rules || "",
-        ).length > 4000
+        String(data.rules || "").length >
+        4000
       ) {
-        fail(
-          "Rules too long.",
-        );
+        fail("Rules too long.");
       }
 
       if (
@@ -988,10 +938,7 @@ export function createAdminFeatures(ctx) {
             `UPDATE settings
              SET value=?
              WHERE key=?`,
-            String(
-              data[key] ??
-                "",
-            ),
+            String(data[key] ?? ""),
             key,
           );
         }
@@ -1007,38 +954,28 @@ export function createAdminFeatures(ctx) {
     }
 
     if (
-      route ===
-        "/api/admin/request" &&
+      route === "/api/admin/request" &&
       post
     ) {
       if (
-        ![
-          "SUCCESS",
-          "REJECTED",
-        ].includes(
+        !["SUCCESS", "REJECTED"].includes(
           data.status,
         )
       ) {
-        fail(
-          "Invalid status.",
-        );
+        fail("Invalid status.");
       }
 
       tx(() => {
-        const request =
-          one(
-            `SELECT *
-             FROM requests
-             WHERE id=?`,
-            Number(
-              data.id,
-            ),
-          );
+        const request = one(
+          `SELECT *
+           FROM requests
+           WHERE id=?`,
+          Number(data.id),
+        );
 
         if (
           !request ||
-          request.status !==
-            "PENDING"
+          request.status !== "PENDING"
         ) {
           fail(
             "Request already processed or missing.",
@@ -1046,20 +983,17 @@ export function createAdminFeatures(ctx) {
         }
 
         if (
-          request.type ===
-            "DEPOSIT" &&
-          data.status ===
-            "SUCCESS"
+          request.type === "DEPOSIT" &&
+          data.status === "SUCCESS"
         ) {
-          const first =
-            !one(
-              `SELECT id
-               FROM requests
-               WHERE user_id=?
-               AND type='DEPOSIT'
-               AND status='SUCCESS'`,
-              request.user_id,
-            );
+          const first = !one(
+            `SELECT id
+             FROM requests
+             WHERE user_id=?
+             AND type='DEPOSIT'
+             AND status='SUCCESS'`,
+            request.user_id,
+          );
 
           credit(
             request.user_id,
@@ -1067,23 +1001,16 @@ export function createAdminFeatures(ctx) {
             "Approved demo deposit",
           );
 
-          if (
-            first
-          ) {
-            const bonus =
-              Math.floor(
-                (
-                  request.amount *
-                  Number(
-                    settings()
-                      .welcome,
-                  )
-                ) / 100,
-              );
+          if (first) {
+            const bonus = Math.floor(
+              (request.amount *
+                Number(
+                  settings().welcome,
+                )) /
+                100,
+            );
 
-            if (
-              bonus
-            ) {
+            if (bonus) {
               credit(
                 request.user_id,
                 bonus,
@@ -1096,8 +1023,7 @@ export function createAdminFeatures(ctx) {
         if (
           request.type ===
             "WITHDRAWAL" &&
-          data.status ===
-            "REJECTED"
+          data.status === "REJECTED"
         ) {
           credit(
             request.user_id,
@@ -1114,10 +1040,7 @@ export function createAdminFeatures(ctx) {
                reviewed_at=CURRENT_TIMESTAMP
            WHERE id=?`,
           data.status,
-          text(
-            data.note,
-            300,
-          ),
+          text(data.note, 300),
           user.id,
           request.id,
         );
@@ -1128,91 +1051,63 @@ export function createAdminFeatures(ctx) {
             "_" +
             data.status,
           request.id,
-          text(
-            data.note,
-            300,
-          ),
+          text(data.note, 300),
         );
       });
 
       return {};
     }
 
-    fail(
-      "Not found",
-      404,
-    );
+    fail("Not found", 404);
   }
 
-  function customerRequest(
-    data,
-    user,
-  ) {
-    const coins =
-      amount(
-        data.amount,
-      );
+  function customerRequest(data, user) {
+    const coins = amount(
+      data.amount,
+      data.type === "WITHDRAWAL"
+        ? 300
+        : 100,
+    );
 
     if (
-      ![
-        "DEPOSIT",
-        "WITHDRAWAL",
-      ].includes(
+      !["DEPOSIT", "WITHDRAWAL"].includes(
         data.type,
       )
     ) {
-      fail(
-        "Invalid type.",
-      );
+      fail("Invalid type.");
     }
 
     const details = {};
 
-    const note = text(
-      data.note,
-      300,
-    );
+    const note = text(data.note, 300);
 
-    if (
-      data.type ===
-      "DEPOSIT"
-    ) {
-      details.utr =
-        text(
-          data.utr ||
-            note,
-          100,
-        );
+    if (data.type === "DEPOSIT") {
+      details.utr = text(
+        data.utr || note,
+        100,
+      );
 
-      if (
-        !details.utr
-      ) {
+      if (!details.utr) {
         fail(
-          "Enter a demo UTR / reference.",
+          "Enter a UTR / reference.",
         );
       }
     } else {
-      details.holder =
-        text(
-          data.holder,
-        );
+      details.holder = text(
+        data.holder,
+      );
 
-      details.bank =
-        text(
-          data.bank,
-        );
+      details.bank = text(data.bank);
 
-      details.account =
-        text(
-          data.account,
-          22,
-        );
+      details.account = text(
+        data.account,
+        22,
+      );
 
-      details.ifsc =
-        text(
-          data.ifsc,
-          11,
-        ).toUpperCase();
+      details.ifsc = text(
+        data.ifsc,
+        11,
+      ).toUpperCase();
 
       if (
         !details.holder ||
@@ -1241,22 +1136,18 @@ export function createAdminFeatures(ctx) {
 
     return tx(() => {
       if (
-        data.type ===
-        "WITHDRAWAL"
+        data.type === "WITHDRAWAL"
       ) {
-        const balance =
-          one(
-            `SELECT balance
-             FROM users
-             WHERE id=?`,
-            user.id,
-          ).balance;
+        const balance = one(
+          `SELECT balance
+           FROM users
+           WHERE id=?`,
+          user.id,
+        ).balance;
 
-        if (
-          balance < coins
-        ) {
+        if (balance < coins) {
           fail(
-            "Low demo balance.",
+            "Insufficient balance.",
           );
         }
 
@@ -1268,8 +1159,7 @@ export function createAdminFeatures(ctx) {
       }
 
       const proofId =
-        data.type ===
-          "DEPOSIT" &&
+        data.type === "DEPOSIT" &&
         data.proof
           ? storeImage(
               data.proof,
@@ -1278,25 +1168,22 @@ export function createAdminFeatures(ctx) {
             )
           : "";
 
-      const result =
-        run(
-          `INSERT INTO requests(
-            user_id,
-            type,
-            amount,
-            note,
-            details,
-            proof_id
-          ) VALUES(?,?,?,?,?,?)`,
-          user.id,
-          data.type,
-          coins,
+      const result = run(
+        `INSERT INTO requests(
+          user_id,
+          type,
+          amount,
           note,
-          JSON.stringify(
-            details,
-          ),
-          proofId,
-        );
+          details,
+          proof_id
+        ) VALUES(?,?,?,?,?,?)`,
+        user.id,
+        data.type,
+        coins,
+        note,
+        JSON.stringify(details),
+        proofId,
+      );
 
       return {
         id: Number(
@@ -1307,19 +1194,13 @@ export function createAdminFeatures(ctx) {
     });
   }
 
-  function changePassword(
-    data,
-    user,
-  ) {
-    password(
-      data.newPassword,
-    );
+  function changePassword(data, user) {
+    password(data.newPassword);
 
     if (
       !valid(
         String(
-          data.currentPassword ||
-            "",
+          data.currentPassword || "",
         ),
         user.password,
       )
@@ -1352,36 +1233,26 @@ export function createAdminFeatures(ctx) {
        SET password=?,
            must_change=0
        WHERE id=?`,
-      hash(
-        data.newPassword,
-      ),
+      hash(data.newPassword),
       user.id,
     );
 
-    revoke(
-      user.id,
-    );
+    revoke(user.id);
 
     return {
       loginRequired: true,
     };
   }
 
-  function media(
-    id,
-    user,
-  ) {
-    const file =
-      one(
-        `SELECT *
-         FROM media
-         WHERE id=?`,
-        id,
-      );
+  function media(id, user) {
+    const file = one(
+      `SELECT *
+       FROM media
+       WHERE id=?`,
+      id,
+    );
 
-    if (
-      !file
-    ) {
+    if (!file) {
       fail(
         "Image not found.",
         404,
@@ -1389,20 +1260,15 @@ export function createAdminFeatures(ctx) {
     }
 
     const isQr =
-      file.kind ===
-        "qr" &&
-      settings().qrImageId ===
-        id;
+      file.kind === "qr" &&
+      settings().qrImageId === id;
 
     const isAdmin =
-      user?.role ===
-      "admin";
+      user?.role === "admin";
 
     const isOwner =
-      user?.role ===
-        "customer" &&
-      file.user_id ===
-        user.id;
+      user?.role === "customer" &&
+      file.user_id === user.id;
 
     if (
       !isQr &&
