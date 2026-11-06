@@ -1,4 +1,8 @@
-import { flightPoint, elapsedAt } from "/flight.js";
+import {
+  flightPoint,
+  elapsedAt,
+  GameAudio,
+} from "/flight.js";
 
 const $ = (selector) =>
   document.querySelector(selector);
@@ -13,11 +17,15 @@ let busy = false;
 let tab = "ALL";
 let refreshing = false;
 
+const gameAudio = new GameAudio();
+
 let flightSnapshot = null;
 let flightReceivedAt = 0;
 let flightFrame = 0;
 
 function stopFlight() {
+  gameAudio.reset();
+
   if (flightFrame) {
     cancelAnimationFrame(flightFrame);
   }
@@ -38,10 +46,11 @@ function startFlight() {
       return;
     }
 
-    const snapshot = flightSnapshot || {
-      phase: "WAITING",
-      elapsedMs: 0,
-    };
+    const snapshot =
+      flightSnapshot || {
+        phase: "WAITING",
+        elapsedMs: 0,
+      };
 
     const point = flightPoint(
       elapsedAt(
@@ -76,6 +85,14 @@ function startFlight() {
         ? "M 70 215"
         : point.path,
     );
+
+    if (
+      document.hidden ||
+      performance.now() -
+        flightReceivedAt > 2000
+    ) {
+      gameAudio.stopEngine();
+    }
 
     flightFrame =
       requestAnimationFrame(draw);
@@ -180,16 +197,14 @@ function bonuses() {
 
   return `
     <div class="bonusrow">
-      ${items
-        .map(
-          ([key, title]) => `
-            <div class="bonus">
-              <b>${pct(key)}%</b>
-              <span>${title}</span>
-            </div>
-          `,
-        )
-        .join("")}
+      ${items.map(
+        ([key, title]) => `
+          <div class="bonus">
+            <b>${pct(key)}%</b>
+            <span>${title}</span>
+          </div>
+        `,
+      ).join("")}
     </div>
   `;
 }
@@ -394,7 +409,9 @@ function auth(mode = "login") {
     };
 }
 
-function changePassword(required = false) {
+function changePassword(
+  required = false,
+) {
   show(
     required
       ? "Change Temporary Password"
@@ -545,15 +562,13 @@ function panel(number) {
         </div>
 
         <div class="quick">
-          ${[10, 100, 500, 1000]
-            .map(
-              (coins) => `
-                <button
-                  data-quick="${number},${coins}"
-                >${coins}</button>
-              `,
-            )
-            .join("")}
+          ${[10, 100, 500, 1000].map(
+            (coins) => `
+              <button
+                data-quick="${number},${coins}"
+              >${coins}</button>
+            `,
+          ).join("")}
         </div>
       </div>
 
@@ -614,13 +629,13 @@ function renderGame() {
             BALANCE ·
             ${esc(me.username)}
           </small>
+
+          <small
+            id="demomode"
+            class="gamemodecompact"
+          >Simulation</small>
         </div>
       </header>
-
-      <div
-        id="demomode"
-        class="modebanner"
-      >Demo mode</div>
 
       <div
         id="history"
@@ -685,6 +700,11 @@ function renderGame() {
         <span>Simulation balance</span>
 
         <button
+          data-sound
+          aria-pressed="${gameAudio.enabled}"
+        >${gameAudio.enabled ? "Sound ON" : "Sound OFF"}</button>
+
+        <button
           data-account
         >History</button>
 
@@ -742,37 +762,33 @@ async function refresh() {
 
     $("#demomode").textContent =
       state.round.mode === "ADMIN"
-        ? "ADMIN-CONTROLLED DEMO · Fixed before betting"
-        : "RANDOM DEMO · Server-generated outcome";
+        ? "Simulation · Admin-set outcomes"
+        : "Simulation · Random outcomes";
 
     $("#balance").textContent =
       num(me.balance);
 
     $("#history").innerHTML =
-      state.history
-        .map(
-          (item, index) => `
-            <span
-              class="${
-                index % 2
-                  ? "wine"
-                  : "green"
-              }"
-              title="${
-                item.mode === "ADMIN"
-                  ? "Admin-Controlled Demo"
-                  : "Random Demo"
-              }"
-            >
-              ${item.mult.toFixed(2)}x${
-                item.mode === "ADMIN"
-                  ? " · A"
-                  : ""
-              }
-            </span>
-          `,
-        )
-        .join("") ||
+      state.history.map(
+        (item, index) => `
+          <span
+            class="${
+              index % 2 ? "wine" : "green"
+            }"
+            title="${
+              item.mode === "ADMIN"
+                ? "Admin-Controlled Demo"
+                : "Random Demo"
+            }"
+          >
+            ${item.mult.toFixed(2)}x${
+              item.mode === "ADMIN"
+                ? " · A"
+                : ""
+            }
+          </span>
+        `,
+      ).join("") ||
       "<span>First demo round</span>";
 
     const current = state.round;
@@ -799,6 +815,10 @@ async function refresh() {
 
     flightSnapshot = current;
     flightReceivedAt = performance.now();
+
+    if (!document.hidden) {
+      gameAudio.sync(current);
+    }
 
     for (const number of [1, 2]) {
       const bet = state.bets.find(
@@ -870,6 +890,8 @@ async function refresh() {
 
     renderBets();
   } catch {
+    gameAudio.reset();
+
     if ($("#phase")) {
       $("#phase").textContent =
         "CONNECTION LOST · RETRYING";
@@ -916,36 +938,33 @@ function renderBets() {
       : state.bets;
 
   $("#betrows").innerHTML =
-    rows
-      .map(
-        (item) => `
-          <tr>
-            <td>
-              ${esc(
-                tab === "ALL"
-                  ? item.username
-                  : "#" + item.round_id,
-              )}
-            </td>
+    rows.map(
+      (item) => `
+        <tr>
+          <td>
+            ${esc(
+              tab === "ALL"
+                ? item.username
+                : "#" + item.round_id,
+            )}
+          </td>
 
-            <td>${num(item.stake)}</td>
+          <td>${num(item.stake)}</td>
 
-            <td>
-              <span class="pill">
-                ${esc(item.status)}
+          <td>
+            <span class="pill">
+              ${esc(item.status)}
 
-                ${
-                  item.payout
-                    ? " · " +
-                      num(item.payout)
-                    : ""
-                }
-              </span>
-            </td>
-          </tr>
-        `,
-      )
-      .join("") ||
+              ${
+                item.payout
+                  ? " · " + num(item.payout)
+                  : ""
+              }
+            </span>
+          </td>
+        </tr>
+      `,
+    ).join("") ||
     `
       <tr>
         <td
@@ -1322,17 +1341,17 @@ function info(kind) {
         button.disabled = true;
 
         try {
-          await api("promo", {
-            code: new FormData(
-              event.target,
-            ).get("code"),
-          });
+          await api(
+            "promo",
+            {
+              code: new FormData(
+                event.target,
+              ).get("code"),
+            },
+          );
 
           modal.close();
-
-          toast(
-            "Promo bonus credited",
-          );
+          toast("Promo bonus credited");
 
           await refresh();
         } catch (error) {
@@ -1362,46 +1381,43 @@ async function account() {
           </tr>
 
           ${
-            data.requests
-              .map(
-                (item) => `
-                  <tr>
-                    <td>
-                      ${esc(item.type)}
-                    </td>
+            data.requests.map(
+              (item) => `
+                <tr>
+                  <td>
+                    ${esc(item.type)}
+                  </td>
 
-                    <td>
-                      ${num(item.amount)}
-                    </td>
+                  <td>
+                    ${num(item.amount)}
+                  </td>
 
-                    <td>
-                      ${esc(item.status)}
+                  <td>
+                    ${esc(item.status)}
 
-                      <small>
-                        ${esc(
-                          item.admin_note ||
-                            "",
-                        )}
-                      </small>
+                    <small>
+                      ${esc(
+                        item.admin_note || "",
+                      )}
+                    </small>
 
-                      ${
-                        item.proof_id
-                          ? `
-                            <a
-                              href="/api/media/${esc(
-                                item.proof_id,
-                              )}"
-                              target="_blank"
-                              rel="noopener"
-                            >View proof</a>
-                          `
-                          : ""
-                      }
-                    </td>
-                  </tr>
-                `,
-              )
-              .join("") ||
+                    ${
+                      item.proof_id
+                        ? `
+                          <a
+                            href="/api/media/${esc(
+                              item.proof_id,
+                            )}"
+                            target="_blank"
+                            rel="noopener"
+                          >View proof</a>
+                        `
+                        : ""
+                    }
+                  </td>
+                </tr>
+              `,
+            ).join("") ||
             `
               <tr>
                 <td>No requests yet</td>
@@ -1416,39 +1432,37 @@ async function account() {
       <div class="tablewrap">
         <table>
           ${
-            data.ledger
-              .map(
-                (item) => `
-                  <tr>
-                    <td>
-                      ${esc(item.note)}
+            data.ledger.map(
+              (item) => `
+                <tr>
+                  <td>
+                    ${esc(item.note)}
 
-                      <small>
-                        ${esc(
-                          new Date(
-                            item.created.replace(
-                              " ",
-                              "T",
-                            ) + "Z",
-                          ).toLocaleString(
-                            "en-IN",
-                            {
-                              timeZone:
-                                "Asia/Kolkata",
-                            },
-                          ),
-                        )}
-                        IST
-                      </small>
-                    </td>
+                    <small>
+                      ${esc(
+                        new Date(
+                          item.created.replace(
+                            " ",
+                            "T",
+                          ) + "Z",
+                        ).toLocaleString(
+                          "en-IN",
+                          {
+                            timeZone:
+                              "Asia/Kolkata",
+                          },
+                        ),
+                      )}
+                      IST
+                    </small>
+                  </td>
 
-                    <td>
-                      ${num(item.amount)}
-                    </td>
-                  </tr>
-                `,
-              )
-              .join("") ||
+                  <td>
+                    ${num(item.amount)}
+                  </td>
+                </tr>
+              `,
+            ).join("") ||
             `
               <tr>
                 <td>No transactions yet</td>
@@ -1477,6 +1491,30 @@ app.addEventListener(
     try {
       if (button.dataset.auth) {
         auth(button.dataset.auth);
+      } else if (
+        button.hasAttribute(
+          "data-sound",
+        )
+      ) {
+        await gameAudio.toggle();
+
+        button.textContent =
+          gameAudio.enabled
+            ? "Sound ON"
+            : "Sound OFF";
+
+        button.setAttribute(
+          "aria-pressed",
+          String(gameAudio.enabled),
+        );
+
+        if (
+          gameAudio.enabled &&
+          state?.round &&
+          !document.hidden
+        ) {
+          gameAudio.sync(state.round);
+        }
       } else if (
         button.hasAttribute(
           "data-support",
@@ -1588,20 +1626,28 @@ app.addEventListener(
 
         try {
           if (bet) {
-            await api("cashout", {
-              id: bet.id,
-            });
-          } else {
-            await api("bet", {
-              amount: Number(
-                $(
-                  "#stake" + number,
-                ).value,
-              ),
+            await api(
+              "cashout",
+              {
+                id: bet.id,
+              },
+            );
 
-              panel: number,
-              roundId: state.round.id,
-            });
+            gameAudio.cashout();
+          } else {
+            await api(
+              "bet",
+              {
+                amount: Number(
+                  $(
+                    "#stake" + number,
+                  ).value,
+                ),
+
+                panel: number,
+                roundId: state.round.id,
+              },
+            );
           }
         } finally {
           busy = false;
@@ -1622,12 +1668,8 @@ async function init() {
       await api("me")
     ).user;
 
-    if (
-      me?.role === "customer"
-    ) {
-      if (
-        me.mustChangePassword
-      ) {
+    if (me?.role === "customer") {
+      if (me.mustChangePassword) {
         welcome();
         changePassword(true);
       } else {
@@ -1661,6 +1703,8 @@ document.addEventListener(
   () => {
     if (!document.hidden) {
       refresh();
+    } else {
+      gameAudio.reset();
     }
   },
 );
