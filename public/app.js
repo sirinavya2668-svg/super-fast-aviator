@@ -138,7 +138,6 @@ function renderGame() {
 document.addEventListener('click', (e) => { if (!e.target.closest('.gamenav')) closeMenu(); });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenu(); });
 
-// Fictional display activity is isolated from customer balances and server bets.
 function seedOf(value) {
   let h = 2166136261;
   for (const c of String(value)) h = Math.imul(h ^ c.charCodeAt(0),16777619);
@@ -166,174 +165,47 @@ function masked(value) {
   const s = String(value || 'S');
   return (/^\d/.test(s) ? s.slice(0,2) : s.slice(0,1).toUpperCase()) + '****';
 }
-function buildSamples(roundId) {
-  const rng = randomFor(seedOf('samples-' + roundId));
-  const total = 1200 + Math.floor(rng() * 601);
-  // Exactly fifteen higher sample stakes; remaining rows mainly ₹500/₹1,000/₹3,000.
-  const high = [60000,55000,50000,48000,45000,40000,35000,30000,25000,20000,15000,12000,10000,6000,5000];
-  const usual = [100,200,300,500,500,500,1000,1000,1000,1500,2000,3000,3000];
+function sampleRoundCap(roundId) {
+  const slot = ((roundId % 150) + 150) % 150;
+  const special = {0:15000,1:10000,29:55000,59:57000,89:56000,119:54000,149:60000};
+  if (Object.hasOwn(special,slot)) return special[slot];
+  const caps = [5000,15000,10000,30000,20000,25000,8000,35000,12000,40000,18000,45000,6000,48000];
+  return caps[(slot * 5 + Math.floor(roundId / 150) * 3) % caps.length];
+}
+function sampleIdentityGroup(roundId) {
+  return Math.floor((Number(roundId) - 1) / 3);
+}
+function sampleIdentity(index, roundId) {
+  const group = sampleIdentityGroup(roundId);
   const names = ['S','T','L','96','98','97','K','R','P','M'];
+  return {
+    username:names[((index * 7 + group) % names.length + names.length) % names.length] + '****',
+    avatarId:((index * 47 + group * 31) % 300 + 300) % 300,
+  };
+}
+function buildSamples(roundId) {
+  const rng = randomFor(seedOf('rotating-samples-v2-' + roundId));
+  const total = 1200 + ((roundId * 137) % 601);
+  const cap = sampleRoundCap(roundId);
+  const step = cap <= 15000 ? 50 : 100;
+  const minimum = Math.max(3050,Math.round(cap * 0.3 / step) * step);
+  const candidates = [];
+  for (let value = minimum; value < cap; value += step) candidates.push(value);
+  for (let i = candidates.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [candidates[i],candidates[j]] = [candidates[j],candidates[i]];
+  }
+  const high = [cap,...candidates.slice(0,14)].sort((a,b) => b-a);
+  const usual = [500,1000,3000,500,1000,3000,100,500,1000,3000,200,1000,500,3000,1500,500,1000,2000];
   sampleRows = Array.from({length:total}, (_,i) => ({
-    key:'sample-' + i, simulated:true, username:names[Math.floor(rng()*names.length)] + '****',
-    avatarId:Math.floor(rng()*300), stake:high[i] || usual[Math.floor(rng()*usual.length)],
+    key:'sample-' + i, simulated:true, ...sampleIdentity(i,roundId),
+    stake:i < high.length ? high[i] : usual[(seedOf('small-' + i) + roundId) % usual.length],
     target:(112 + Math.floor(rng()*183)) / 100, willCash:rng() < 0.72,
-    join: i < high.length ? 0 : rng(),
+    join:i < high.length ? 0 : rng(),
   }));
   sampleRound = roundId;
 }
 function activityRows() {
   const round = state.round;
   if (sampleRound !== round.id) { buildSamples(round.id); visibleRows = 50; }
-  const progress = round.phase === 'WAITING' ? Math.max(0,Math.min(1,1 - round.countdown / 10)) : 1;
-  const fake = sampleRows.filter((b) => b.join <= progress).map((b) => {
-    const won = b.willCash && round.phase !== 'WAITING' && (round.phase === 'CRASHED' ? b.target < round.mult : b.target <= round.mult);
-    return {...b,status:won ? 'WON' : round.phase === 'CRASHED' ? 'LOST' : 'ACTIVE',mult:won ? b.target : 0,payout:won ? Math.floor(b.stake*b.target) : 0};
-  });
-  const real = state.allBets.map((b,i) => ({...b,simulated:false,key:'user-' + (b.id ?? i),avatarId:b.avatarId ?? seedOf(b.username)}));
-  return [...real,...fake].sort((a,b) => b.stake - a.stake || Number(a.simulated) - Number(b.simulated) || String(a.key).localeCompare(String(b.key)));
-}
-function renderBets() {
-  if (!state || !$('#betrows')) return;
-  const all = tab === 'ALL';
-  $('#activity').hidden = !all;
-  $('#morebets').hidden = true;
-  if (!all) {
-    $('#bethead').innerHTML = '<tr><th>ROUND</th><th>BET ₹</th><th>RESULT</th></tr>';
-    $('#betrows').innerHTML = state.bets.map((b) => `<tr><td>#${esc(b.round_id)}<small>BET ${esc(b.panel)}</small></td><td>${num(b.stake)}</td><td><span class="pill">${esc(b.status)}${b.status === 'WON' ? ' · ' + Number(b.mult).toFixed(2) + 'x · ' + num(b.payout) : ''}</span></td></tr>`).join('') || '<tr><td colspan="3" class="muted">No bets yet</td></tr>';
-    $('#listnote').textContent = 'Your own bets only · Simulation balance'; return;
-  }
-  const rows = activityRows();
-  const online = 4000 + seedOf('online-' + Math.floor(Date.now()/5000)) % 4001;
-  const payout = rows.reduce((sum,b) => sum + Number(b.payout || 0),0);
-  $('#activity').innerHTML = `<div class="activityleft"><div class="avatarstack">${[3,24,87].map(avatarImg).join('')}</div><span><b>${count(rows.length)}</b> Bets · Online ${count(online)}</span><small>Simulated online count · Sample + user bets</small></div><div class="activitywin"><b>${num(payout)}</b><small>Total win · includes samples</small></div>`;
-  $('#bethead').innerHTML = '<tr><th>PLAYER</th><th>BET ₹</th><th>X</th><th>WIN ₹</th></tr>';
-  $('#betrows').innerHTML = rows.slice(0,visibleRows).map((b) => `<tr class="${b.status === 'WON' ? 'wonrow' : ''}"><td><div class="playercell">${avatarImg(b.avatarId)}<span>${esc(masked(b.username))}<small class="${b.simulated ? 'samplelabel' : 'userlabel'}">${b.simulated ? 'Simulated' : 'User bet'}</small></span></div></td><td>${count(b.stake)}</td><td>${b.status === 'WON' ? Number(b.mult).toFixed(2) + 'x' : '—'}</td><td>${b.status === 'WON' ? count(b.payout) : b.status === 'LOST' ? 'LOST' : '—'}</td></tr>`).join('');
-  $('#morebets').hidden = rows.length <= visibleRows;
-  $('#morebets').textContent = `SHOW MORE (${count(Math.min(visibleRows,rows.length))}/${count(rows.length)})`;
-  $('#listnote').textContent = 'Sample bets are fictional. Only your own bets affect your balance.';
-}
-async function refresh() {
-  if (!me || busy || refreshing || !$('#balance')) return;
-  refreshing = true; const userId = me.id;
-  try {
-    const snapshot = await api('state');
-    if (!me || me.id !== userId || !$('#balance')) return;
-    state = snapshot; me = state.user;
-    $('#balance').textContent = num(me.balance);
-    $('#history').innerHTML = state.history.map((v,i) => `<span class="${i%2 ? 'wine' : 'green'}" title="${['ADMIN','ADMIN2'].includes(v.mode) ? 'Admin-Controlled Demo' : 'Random Demo'}">${Number(v.mult).toFixed(2)}x${['ADMIN','ADMIN2'].includes(v.mode) ? ' · A' : ''}</span>`).join('') || '<span>First demo round</span>';
-    const r = state.round;
-    $('#phase').textContent = r.phase === 'WAITING' ? `NEXT ROUND IN ${r.countdown}s` : r.phase === 'FLYING' ? 'FLYING' : 'FLEW AWAY';
-    $('#mult').textContent = r.phase === 'WAITING' ? 'GET READY' : Number(r.mult).toFixed(2) + 'x';
-    $('#mult').classList.toggle('crashed',r.phase === 'CRASHED');
-    $('#roundid').textContent = 'ROUND #' + r.id;
-    flightSnapshot = r; flightReceivedAt = performance.now();
-    if (!document.hidden) gameAudio.sync(r);
-    for (const n of [1,2]) {
-      const b = state.bets.find((v) => Number(v.round_id) === Number(r.id) && Number(v.panel) === n);
-      const button = $(`[data-bet="${n}"]`);
-      button.classList.toggle('wine',!!b && r.phase === 'FLYING');
-      button.disabled = b ? b.status !== 'ACTIVE' || r.phase !== 'FLYING' : r.phase !== 'WAITING';
-      button.innerHTML = b?.status === 'ACTIVE' && r.phase === 'FLYING' ? `CASH OUT<small>${num(Math.floor(b.stake*r.mult))}</small>` : b ? `${b.status === 'ACTIVE' ? 'BET PLACED' : esc(b.status)}<small>${num(b.stake)}</small>` : r.phase === 'WAITING' ? 'BET<small>AMOUNT</small>' : 'NEXT ROUND';
-    }
-    renderBets();
-  } catch {
-    gameAudio.reset();
-    if ($('#phase')) $('#phase').textContent = 'CONNECTION LOST · RETRYING';
-    for (const b of document.querySelectorAll('[data-bet]')) b.disabled = true;
-  } finally { refreshing = false; }
-}
-async function readImage(file) {
-  if (!file?.size) return null;
-  if (file.size > 1500000) throw new Error('Proof image must be under 1.5 MB.');
-  return new Promise((resolve,reject) => {
-    const reader = new FileReader(); reader.onload = () => resolve(reader.result);
-    reader.onerror = () => reject(new Error('Unable to read image')); reader.readAsDataURL(file);
-  });
-}
-async function request(type) {
-  config = await api('public'); const deposit = type === 'DEPOSIT', min = deposit ? 100 : 300;
-  const bankFields = [['Account Holder',config.bankHolder],['Bank',config.bankName],['Account Number',config.bankAccount],['IFSC',config.bankIfsc],['UPI ID',config.upiId]];
-  const payment = `<div class="bankdetails"><h3>Admin Deposit Details</h3>${bankFields.filter(([,v]) => v).map(([k,v]) => `<p><b>${k}:</b> ${esc(v)}</p>`).join('')}${config.qrImageId ? `<img class="qrpreview" src="/api/media/${encodeURIComponent(config.qrImageId)}" alt="Admin deposit QR">` : ''}<p>${esc(config.depositInstructions || 'Contact support if deposit details have not been configured.')}</p></div>`;
-  show(deposit ? 'Deposit Request' : 'Withdrawal Request', `${deposit ? payment : ''}<form id="reqform">${field(`Amount (₹${min}–₹25,000)`,'amount','number',`min="${min}" max="25000" step="1" value="${min}"`)}${deposit ? `${field('UTR / Reference','utr','text','maxlength="100"')}<label>Proof Image (optional, max 1.5 MB)<input name="proofFile" type="file" accept="image/png,image/jpeg,image/webp"></label>` : `${field('Account Holder','holder','text','maxlength="120"')}${field('Bank Name','bank','text','maxlength="120"')}${field('Account Number','account','text','inputmode="numeric" pattern="[0-9]{6,22}"')}${field('Confirm Account Number','confirmAccount','text','inputmode="numeric" pattern="[0-9]{6,22}"')}${field('IFSC','ifsc','text','maxlength="11"')}<p class="muted">The withdrawal amount is held on submission. Rejection restores the held balance.</p>`}<label>Note (optional)<input name="note" maxlength="300"></label><button type="submit" class="green full">SUBMIT REQUEST</button><p class="error" id="formerror"></p></form>`);
-  $('#reqform').onsubmit = async (e) => {
-    e.preventDefault(); const button = e.target.querySelector('button'); if (button.disabled) return; button.disabled = true;
-    try {
-      const d = Object.fromEntries(new FormData(e.target));
-      const proof = deposit ? await readImage(e.target.querySelector('[name=proofFile]').files[0]) : null;
-      const result = await api('request',{type,amount:Number(d.amount),note:d.note,utr:d.utr,proof,holder:d.holder,bank:d.bank,account:d.account,confirmAccount:d.confirmAccount,ifsc:d.ifsc});
-      modal.close(); toast('Request #' + result.id + ' sent to admin — PENDING'); await refresh();
-    } catch (error) { formError(error); } finally { button.disabled = false; }
-  };
-}
-async function info(kind) {
-  config = await api('public');
-  if (kind === 'rules') show('Rules',`<p class="rules">${esc(config.rules)}</p>`);
-  if (kind === 'bonus') show('Bonus Information',`${bonuses()}<p>Welcome: ${pct('welcome')}% added only by admin after review. Deposit approval does not add a bonus automatically.</p><p>Promo: ${pct('promo')}% added only by admin. Checking a code does not credit the balance.</p><p>Losing: ${pct('losing')}% reviewed by admin when losses reach ₹10,000 or more. No bonus is automatic.</p>`);
-  if (kind === 'promo') {
-    const result = await api('me'); if (result.user?.role !== 'customer') return; me = result.user;
-    const code = me.promoCode || '';
-    show('Promo Code',`<form id="promoform"><label>Admin Promo Code<input name="code" value="${esc(code)}" readonly required maxlength="30"></label><button class="green full" ${code ? '' : 'disabled'}>CHECK CODE</button>${code ? '' : '<p class="muted">Admin has not assigned a promo code. Contact Customer Support.</p>'}<p class="error" id="formerror"></p></form>`);
-    $('#promoform').onsubmit = async (e) => {
-      e.preventDefault(); const button = e.target.querySelector('button'); if (button.disabled) return; button.disabled = true;
-      try { const r = await api('promo',{code:new FormData(e.target).get('code')}); modal.close(); toast(r.message || 'Contact admin for the promo bonus.'); await refresh(); }
-      catch (error) { formError(error); } finally { button.disabled = false; }
-    };
-  }
-}
-function dateIST(value) {
-  const s = String(value || '');
-  const d = new Date(/(?:Z|[+-]\d\d:?\d\d)$/i.test(s) ? s : s.replace(' ','T') + 'Z');
-  return Number.isNaN(d.getTime()) ? esc(s) : esc(d.toLocaleString('en-IN',{timeZone:'Asia/Kolkata'})) + ' IST';
-}
-async function account() {
-  const data = await api('account');
-  show('Account History',`<h3>Requests</h3><div class="tablewrap"><table><tr><th>TYPE</th><th>AMOUNT</th><th>STATUS</th></tr>${data.requests.map((b) => `<tr><td>${esc(b.type)}</td><td>${num(b.amount)}</td><td>${esc(b.status)}<small>${esc(b.admin_note || '')}</small>${b.proof_id ? `<a href="/api/media/${encodeURIComponent(b.proof_id)}" target="_blank" rel="noopener">View proof</a>` : ''}</td></tr>`).join('') || '<tr><td colspan="3">No requests yet</td></tr>'}</table></div><h3>Account Statement</h3><div class="tablewrap"><table>${data.ledger.map((b) => `<tr><td>${esc(String(b.note || '').replace(/\bdemo\s+/gi,''))}<small>${dateIST(b.created)}</small></td><td>${num(b.amount)}</td></tr>`).join('') || '<tr><td>No transactions yet</td></tr>'}</table></div>`);
-}
-app.addEventListener('click',async (e) => {
-  const button = e.target.closest('button'); if (!button || button.disabled) return;
-  if (button.closest('#gamemenu')) closeMenu();
-  try {
-    if (button.dataset.auth) auth(button.dataset.auth);
-    else if (button.hasAttribute('data-sound')) {
-      await gameAudio.toggle(); button.textContent = gameAudio.enabled ? '🔊' : '🔇';
-      button.setAttribute('aria-pressed',String(gameAudio.enabled)); toast(gameAudio.enabled ? 'Sound ON' : 'Sound OFF');
-      if (gameAudio.enabled) { gameAudio.tone(880,880,0.18,0.08); if (state?.round && !document.hidden) gameAudio.sync(state.round); }
-    } else if (button.hasAttribute('data-support')) support();
-    else if (button.hasAttribute('data-logout')) { await api('logout',{}); me = null; state = null; welcome(); }
-    else if (button.hasAttribute('data-password')) changePassword();
-    else if (button.dataset.request) await request(button.dataset.request);
-    else if (button.dataset.info) await info(button.dataset.info);
-    else if (button.hasAttribute('data-account')) await account();
-    else if (button.dataset.step) {
-      const step = Number(button.dataset.step), input = $('#stake' + Math.abs(step));
-      input.value = Math.max(10,Math.min(25000,(Number(input.value) || 10) + (step > 0 ? 10 : -10)));
-    } else if (button.dataset.quick) {
-      const [n,v] = button.dataset.quick.split(','); $('#stake' + n).value = v;
-    } else if (button.dataset.tab) {
-      tab = button.dataset.tab; visibleRows = 50;
-      for (const b of document.querySelectorAll('[data-tab]')) b.classList.toggle('green',b === button);
-      renderBets();
-    } else if (button.hasAttribute('data-more')) { visibleRows += 50; renderBets(); }
-    else if (button.dataset.bet && state) {
-      busy = true; button.disabled = true;
-      const n = Number(button.dataset.bet);
-      const b = state.bets.find((v) => Number(v.round_id) === Number(state.round.id) && Number(v.panel) === n && v.status === 'ACTIVE');
-      try {
-        if (b && state.round.phase === 'FLYING') { await api('cashout',{id:b.id}); gameAudio.cashout(); }
-        else { await api('bet',{amount:Number($('#stake'+n).value),panel:n,roundId:state.round.id}); }
-      } finally { busy = false; await refresh(); }
-    }
-  } catch (error) { toast(error.message); }
-});
-async function init() {
-  try {
-    config = await api('public'); me = (await api('me')).user;
-    if (me?.role === 'customer') {
-      if (me.mustChangePassword) { welcome(); changePassword(true); }
-      else { renderGame(); await refresh(); }
-    } else welcome();
-  } catch (error) { app.innerHTML = '<p class="error">Unable to connect. Refresh to retry.</p>'; toast(error.message); }
-}
-await init();
-setInterval(() => { if (!document.hidden) refresh(); },500);
-document.addEventListener('visibilitychange',() => { if (document.hidden) gameAudio.reset(); else refresh(); });
+  const progress = round.phase === 'WAITING' ? Math.max(0
