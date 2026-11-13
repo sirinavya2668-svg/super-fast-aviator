@@ -1,4 +1,3 @@
-public/app.js
 import { flightPoint, elapsedAt, GameAudio } from '/flight.js?v=20261106-twoplans';
 
 const $ = (s) => document.querySelector(s);
