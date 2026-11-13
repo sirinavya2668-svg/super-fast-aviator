@@ -1,3 +1,4 @@
+import { flightPoint, elapsedAt } from '/flight.js?v=20261106-twoplans';
 import { AdminAlerts } from '/admin-alerts.js?v=20261113-mp3-v2';
 
 const $ = (selector) =>
@@ -50,6 +51,80 @@ let next = null;
 let lastSeen = 0;
 let polling = false;
 const adminAlerts = new AdminAlerts({api:(...args)=>api(...args),toast:(message)=>toast(message)});
+
+// A read-only live preview of the same server round used by customers.
+let adminFlightFrame=0,adminFlightSnapshot=null,adminFlightReceivedAt=0;
+let adminFlightBusy=false,adminFlightGeneration=0;
+function adminFlightEligible() {
+  return me?.role==='admin' && page==='Game Control' && !!$('#adminflight');
+}
+function stopAdminFlight() {
+  adminFlightGeneration++;
+  if(adminFlightFrame)cancelAnimationFrame(adminFlightFrame);
+  adminFlightFrame=0;adminFlightSnapshot=null;
+}
+function adminFlightMarkup() {
+  return `<section id="adminflight" class="adminflight" aria-label="Live customer flight preview">
+    <div class="adminflightgrid"></div>
+    <div class="adminflightplot">
+      <svg viewBox="0 0 600 250" preserveAspectRatio="none" aria-hidden="true"><path id="adminflighttrail" d="M 70 215"/></svg>
+      <img id="adminflightplane" src="/plane.svg" alt="Live airplane">
+    </div>
+    <div class="adminflightstatus"><small id="adminflightphase">CONNECTING</small><b id="adminflightmult">—</b><small id="adminflightround">LIVE · CUSTOMER ROUND</small></div>
+  </section>`;
+}
+function drawAdminFlight() {
+  adminFlightFrame=0;
+  if(!adminFlightEligible() || document.hidden)return;
+  const s=adminFlightSnapshot;
+  const plane=$('#adminflightplane'),trail=$('#adminflighttrail');
+  if(!plane || !trail)return;
+  const stale=!s || performance.now()-adminFlightReceivedAt>2000;
+  const point=flightPoint(elapsedAt(s,adminFlightReceivedAt,performance.now()));
+  plane.style.left=`${point.x/600*100}%`;plane.style.top=`${point.y/250*100}%`;
+  plane.style.transform=`translate(-50%,-50%) rotate(${point.angle.toFixed(2)}deg)`;
+  plane.classList.toggle('gone',s?.phase==='CRASHED');
+  plane.classList.toggle('stale',stale);
+  trail.setAttribute('d',!s || s.phase==='WAITING' ? 'M 70 215' : point.path);
+  $('#adminflightphase').textContent=stale ? 'CONNECTING · RETRYING' : s.phase==='WAITING' ? `NEXT ROUND IN ${s.countdown}s` : s.phase==='FLYING' ? 'FLYING' : 'FLEW AWAY';
+  $('#adminflightmult').textContent=!s ? '—' : s.phase==='WAITING' ? 'GET READY' : Number(s.mult).toFixed(2)+'x';
+  $('#adminflightmult').classList.toggle('crashed',s?.phase==='CRASHED');
+  $('#adminflightround').textContent=s ? 'ROUND #'+s.id+' · LIVE' : 'LIVE · CUSTOMER ROUND';
+  adminFlightFrame=requestAnimationFrame(drawAdminFlight);
+}
+async function refreshAdminFlight() {
+  if(adminFlightBusy || !adminFlightEligible() || document.hidden)return;
+  const generation=adminFlightGeneration,element=$('#adminflight');
+  const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),4000);
+  adminFlightBusy=true;
+  try {
+    const response=await fetch('/api/admin/flight',{cache:'no-store',credentials:'same-origin',signal:controller.signal});
+    if(response.status===401){
+      if(generation===adminFlightGeneration){me=null;loginScreen();}
+      return;
+    }
+    if(!response.ok)throw new Error('Live preview unavailable.');
+    const result=await response.json();
+    if(generation!==adminFlightGeneration || element!==$('#adminflight') || !adminFlightEligible() || document.hidden)return;
+    const s=result.round;
+    if(!s || !['WAITING','FLYING','CRASHED'].includes(s.phase) || !Number.isFinite(Number(s.elapsedMs)) || !Number.isFinite(Number(s.mult)))throw new Error('Invalid flight snapshot.');
+    adminFlightSnapshot=s;adminFlightReceivedAt=performance.now();
+    const banner=$('#admincurrentround');
+    if(banner)banner.innerHTML=`Current round #${esc(s.id)}: <strong>${esc(modeLabel(s.mode))}</strong> · ${esc(s.phase)} · Current box: ${s.mode!=='RANDOM' && s.planSlot ? '#'+esc(s.planSlot) : '—'}`;
+    if(!adminFlightFrame)drawAdminFlight();
+  }catch{
+    // Keep the form and its unsaved inputs intact; the preview shows its stale state.
+  }finally{clearTimeout(timeout);adminFlightBusy=false;}
+}
+function startAdminFlight() {
+  if(!adminFlightEligible())return;
+  drawAdminFlight();refreshAdminFlight();
+}
+setInterval(refreshAdminFlight,500);
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden){if(adminFlightFrame)cancelAnimationFrame(adminFlightFrame);adminFlightFrame=0;}
+  else if(adminFlightEligible()){refreshAdminFlight();if(!adminFlightFrame)drawAdminFlight();}
+});
 
 const pages = [
   "Dashboard",
@@ -247,6 +322,7 @@ function formHandler(selector, handler) {
 }
 
 function loginScreen() {
+  stopAdminFlight();
   adminAlerts.setAccount(null);
   app.innerHTML = `
     <main class="adminlogin">
@@ -588,11 +664,12 @@ function gameForm() {
     return Array.from({length: 50}, (_, i) => plan[i] == null ? null : plan[i]);
   }
   return `
-    <p class="modebanner">
+    <p class="modebanner" id="admincurrentround">
       Current round #${game.id}: <strong>${esc(modeLabel(game.mode))}</strong> · ${esc(game.phase)}
       · Current box: ${game.mode !== "RANDOM" && game.planSlot ? "#" + game.planSlot : "—"}
     </p>
     <p>Changes apply at the next betting countdown. The current round stays locked.</p>
+    ${adminFlightMarkup()}
     <form id="gamecontrol">
       <label>Next Round Mode
         <select name="mode">
@@ -660,6 +737,7 @@ async function load() {
 }
 
 function render() {
+  stopAdminFlight();
   app.innerHTML = `
     <div class="adminshell">
       <aside>
@@ -1089,6 +1167,7 @@ function render() {
   }
 
   $("#admincontent").innerHTML = html;
+  if(page === "Game Control")startAdminFlight();
 
   formHandler(
     "#createcustomer",
