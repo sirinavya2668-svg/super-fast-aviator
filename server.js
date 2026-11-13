@@ -1,3 +1,4 @@
+import { createAdminPush } from './adminPush.js';
 import { takeAdminTarget } from './gamePlan.js';
 import { createAdminFeatures } from './adminFeatures.js';
 import http from 'node:http';
@@ -145,6 +146,7 @@ async function withGame(callback=async () => {}) {
   });
 }
 await withGame();
+const adminPush = await createAdminPush({db,q,one,run,gameTransaction,fail});
 let ticking = false;
 const roundTimer = setInterval(async () => {
   if (ticking) return; ticking = true;
@@ -161,9 +163,10 @@ const server = http.createServer(async (req,res) => {
     const url = new URL(req.url,'http://localhost'), route = url.pathname;
     if (route === '/health') { await one('SELECT 1 AS healthy'); res.end('ok'); return; }
     if (!route.startsWith('/api/')) {
-      const files = {'/':'index.html','/admin':'admin.html','/admin/':'admin.html','/admin.js':'admin.js','/app.js':'app.js','/flight.js':'flight.js','/style.css':'style.css','/plane.svg':'plane.svg'};
+      const files = {'/':'index.html','/admin':'admin.html','/admin/':'admin.html','/admin.js':'admin.js','/admin-alerts.js':'admin-alerts.js','/admin-sw.js':'admin-sw.js','/app.js':'app.js','/flight.js':'flight.js','/style.css':'style.css','/plane.svg':'plane.svg','/army_alert_alarm.mp3':'army_alert_alarm.mp3'};
       const file = files[route]; if (!file) fail('Not found',404);
-      res.setHeader('Content-Type',file.endsWith('.js') ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : file.endsWith('.svg') ? 'image/svg+xml' : 'text/html');
+      if (file === 'admin-sw.js') res.setHeader('Cache-Control','no-store');
+      res.setHeader('Content-Type',file.endsWith('.js') ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : file.endsWith('.svg') ? 'image/svg+xml' : file.endsWith('.mp3') ? 'audio/mpeg' : 'text/html');
       res.end(fs.readFileSync(new URL('./public/'+file,import.meta.url))); return;
     }
     res.setHeader('Content-Type','application/json'); res.setHeader('Cache-Control','no-store');
@@ -224,7 +227,9 @@ const server = http.createServer(async (req,res) => {
           if (!user) fail('Please log in.',401);
           if (route.startsWith('/api/admin/')) {
             if (user.role !== 'admin') fail('Admin access required',403);
-            output = await features.admin(route,post,data,url,user);
+            output = adminPush.handles(route)
+              ? await adminPush.handle(route,post,data,user)
+              : await features.admin(route,post,data,url,user);
           } else {
             if (user.role !== 'customer') fail('Customer account required',403);
             if (user.must_change && route !== '/api/password') fail('Change your temporary password first.',428);
@@ -238,7 +243,6 @@ const server = http.createServer(async (req,res) => {
                   countdown:Math.max(0,Math.ceil((round.start-Date.now())/1000))},
                 history:await q('SELECT * FROM rounds ORDER BY id DESC LIMIT 12'),
                 bets:await q('SELECT * FROM bets WHERE user_id=? ORDER BY id DESC LIMIT 30',user.id),
-                // Send masked IDs only; avatars stay stable across rounds.
                 allBets:(await q(`SELECT b.id,b.user_id,b.stake,b.status,b.mult,b.payout,u.username
                   FROM bets b JOIN users u ON u.id=b.user_id
                   WHERE b.round_id=? ORDER BY b.stake DESC,b.id DESC LIMIT 2000`,round.id)).map(publicBet),
@@ -281,7 +285,6 @@ const server = http.createServer(async (req,res) => {
         res.end(JSON.stringify(output));
       } finally { res.end = originalEnd; }
     });
-    // The PostgreSQL transaction commits before a response is sent.
     res.end(reply);
   } catch (error) {
     res.statusCode = error.status || 500;
@@ -295,6 +298,6 @@ server.requestTimeout = 15000; server.headersTimeout = 15000;
 let shuttingDown = false;
 for (const signal of ['SIGTERM','SIGINT']) process.on(signal,() => {
   if (shuttingDown) return; shuttingDown = true; clearInterval(roundTimer);
-  server.close(async () => { await closeDatabase(); process.exit(0); });
+  server.close(async () => { await adminPush.stop(); await closeDatabase(); process.exit(0); });
   setTimeout(() => process.exit(1),10000).unref();
 });
