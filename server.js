@@ -82,6 +82,17 @@ function multiplier() {
   if (round.phase !== 'FLYING') return 1;
   return Math.floor(Math.exp((Date.now()-round.start)/1000*0.16)*100)/100;
 }
+function adminFlightSnapshot() {
+  const now = Date.now();
+  return {
+    id:round.id, phase:round.phase, mode:round.mode, planSlot:round.planSlot,
+    mult:round.phase === 'CRASHED' ? round.crash : multiplier(),
+    elapsedMs:round.phase === 'WAITING' ? 0 : round.phase === 'FLYING'
+      ? Math.max(0,now-round.start)
+      : Math.max(0,Math.log(round.crash)/0.16*1000),
+    countdown:round.phase === 'WAITING' ? Math.max(0,Math.ceil((round.start-now)/1000)) : 0,
+  };
+}
 async function advance() {
   if (round.phase === 'WAITING' && Date.now() >= round.start) begin();
   if (round.phase === 'FLYING' && multiplier() >= round.crash) {
@@ -227,9 +238,14 @@ const server = http.createServer(async (req,res) => {
           if (!user) fail('Please log in.',401);
           if (route.startsWith('/api/admin/')) {
             if (user.role !== 'admin') fail('Admin access required',403);
-            output = adminPush.handles(route)
-              ? await adminPush.handle(route,post,data,user)
-              : await features.admin(route,post,data,url,user);
+            if (route === '/api/admin/flight') {
+              if (post) fail('Method not allowed',405);
+              output = {round:adminFlightSnapshot()};
+            } else {
+              output = adminPush.handles(route)
+                ? await adminPush.handle(route,post,data,user)
+                : await features.admin(route,post,data,url,user);
+            }
           } else {
             if (user.role !== 'customer') fail('Customer account required',403);
             if (user.must_change && route !== '/api/password') fail('Change your temporary password first.',428);
