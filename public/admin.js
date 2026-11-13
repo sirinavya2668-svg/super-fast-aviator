@@ -1,3 +1,5 @@
+import { AdminAlerts } from '/admin-alerts.js?v=20261113-mp3-v2';
+
 const $ = (selector) =>
   document.querySelector(selector);
 
@@ -47,6 +49,7 @@ let requestRows = [];
 let next = null;
 let lastSeen = 0;
 let polling = false;
+const adminAlerts = new AdminAlerts({api:(...args)=>api(...args),toast:(message)=>toast(message)});
 
 const pages = [
   "Dashboard",
@@ -244,6 +247,7 @@ function formHandler(selector, handler) {
 }
 
 function loginScreen() {
+  adminAlerts.setAccount(null);
   app.innerHTML = `
     <main class="adminlogin">
       ${brand()}
@@ -737,6 +741,8 @@ function render() {
       </main>
     </div>
   `;
+
+  adminAlerts.mount(me);
 
   let html = "";
 
@@ -1503,6 +1509,7 @@ app.addEventListener(
           "data-logout",
         )
       ) {
+        await adminAlerts.disable({quiet:true});
         await api(
           "admin/logout",
           {},
