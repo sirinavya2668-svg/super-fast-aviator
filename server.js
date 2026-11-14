@@ -1,3 +1,4 @@
+import { createAutoPlay } from './autoPlay.js';
 import { createAdminPush } from './adminPush.js';
 import { takeAdminTarget } from './gamePlan.js';
 import { createAdminFeatures } from './adminFeatures.js';
@@ -95,6 +96,7 @@ function adminFlightSnapshot() {
 }
 async function advance() {
   if (round.phase === 'WAITING' && Date.now() >= round.start) begin();
+  if (round.phase === 'FLYING') await autoPlay.cashouts(round,multiplier());
   if (round.phase === 'FLYING' && multiplier() >= round.crash) {
     await tx(async () => {
       await run('INSERT INTO rounds(id,mult,mode) VALUES(?,?,?)',round.id,round.crash,round.mode);
@@ -104,6 +106,7 @@ async function advance() {
     round.phase = 'CRASHED'; round.end = Date.now()+3500;
   }
   if (round.phase === 'CRASHED' && Date.now() >= round.end) round = await buildRound(round.id+1);
+  if (round.phase === 'WAITING') await autoPlay.place(round);
 }
 const sessions = new Map(), limits = new Map();
 setInterval(() => {
@@ -136,6 +139,7 @@ async function body(req) {
 const features = await createAdminFeatures({db,q,one,run,tx,hash,valid,credit,settings,sessions,fail,amount,
   getGame:() => ({id:round.id,phase:round.phase,mode:round.mode,planSlot:round.planSlot,mult:round.phase === 'CRASHED' ? round.crash : multiplier()}),
 });
+const autoPlay = await createAutoPlay({db,q,one,run,credit,amount,fail});
 if (process.env.SQLITE_IMPORT_PATH) {
   const {importSqliteBackup} = await import('./importSqlite.js');
   await importSqliteBackup({q,one,run,gameTransaction,credit,hash,adminName,adminPassword},process.env.SQLITE_IMPORT_PATH);
@@ -174,10 +178,10 @@ const server = http.createServer(async (req,res) => {
     const url = new URL(req.url,'http://localhost'), route = url.pathname;
     if (route === '/health') { await one('SELECT 1 AS healthy'); res.end('ok'); return; }
     if (!route.startsWith('/api/')) {
-      const files = {'/':'index.html','/admin':'admin.html','/admin/':'admin.html','/admin.js':'admin.js','/admin-alerts.js':'admin-alerts.js','/admin-sw.js':'admin-sw.js','/app.js':'app.js','/flight.js':'flight.js','/style.css':'style.css','/plane.svg':'plane.svg','/army_alert_alarm.mp3':'army_alert_alarm.mp3'};
+      const files = {'/':'index.html','/admin':'admin.html','/admin/':'admin.html','/admin.js':'admin.js','/admin-alerts.js':'admin-alerts.js','/admin-sw.js':'admin-sw.js','/app.js':'app.js','/flight.js':'flight.js','/style.css':'style.css','/plane.svg':'plane.svg','/aviator-plane.png':'aviator-plane.png','/game-music.mp3':'game-music.mp3','/army_alert_alarm.mp3':'army_alert_alarm.mp3'};
       const file = files[route]; if (!file) fail('Not found',404);
       if (file === 'admin-sw.js') res.setHeader('Cache-Control','no-store');
-      res.setHeader('Content-Type',file.endsWith('.js') ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : file.endsWith('.svg') ? 'image/svg+xml' : file.endsWith('.mp3') ? 'audio/mpeg' : 'text/html');
+      res.setHeader('Content-Type',file.endsWith('.js') ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : file.endsWith('.svg') ? 'image/svg+xml' : file.endsWith('.png') ? 'image/png' : file.endsWith('.mp3') ? 'audio/mpeg' : 'text/html');
       res.end(fs.readFileSync(new URL('./public/'+file,import.meta.url))); return;
     }
     res.setHeader('Content-Type','application/json'); res.setHeader('Cache-Control','no-store');
@@ -232,6 +236,7 @@ const server = http.createServer(async (req,res) => {
           res.setHeader('Set-Cookie',`${cookieName}=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800${secure}`);
           output = {user:safeUser(found)};
         } else if (['/api/logout','/api/admin/logout'].includes(route) && post) {
+          if (user?.role === 'customer') await autoPlay.stopAll(user.id);
           sessions.delete(token); res.setHeader('Set-Cookie',`${cookieName}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0`);
         } else if (route === '/api/me' && !post) output = {user:user ? safeUser(user) : null};
         else {
@@ -259,21 +264,17 @@ const server = http.createServer(async (req,res) => {
                   countdown:Math.max(0,Math.ceil((round.start-Date.now())/1000))},
                 history:await q('SELECT * FROM rounds ORDER BY id DESC LIMIT 12'),
                 bets:await q('SELECT * FROM bets WHERE user_id=? ORDER BY id DESC LIMIT 30',user.id),
+                autoPlans:await autoPlay.plans(user.id),
                 allBets:(await q(`SELECT b.id,b.user_id,b.stake,b.status,b.mult,b.payout,u.username
                   FROM bets b JOIN users u ON u.id=b.user_id
                   WHERE b.round_id=? ORDER BY b.stake DESC,b.id DESC LIMIT 2000`,round.id)).map(publicBet),
               };
+            } else if (route === '/api/auto/start' && post) {
+              output = await autoPlay.start(user,round,data);
+            } else if (route === '/api/auto/stop' && post) {
+              output = await autoPlay.stop(user.id,data.panel);
             } else if (route === '/api/bet' && post) {
-              if (round.phase !== 'WAITING' || data.roundId !== round.id) fail('Betting closed. Wait for the next round.');
-              const stake = amount(data.amount,10);
-              if (![1,2].includes(data.panel)) fail('Invalid bet panel');
-              await tx(async () => {
-                if (await one('SELECT id FROM bets WHERE user_id=? AND round_id=? AND panel=?',user.id,round.id,data.panel)) fail('Only one bet per panel per round.');
-                const balance = (await one('SELECT balance FROM users WHERE id=?',user.id)).balance;
-                if (balance < stake) fail('Insufficient balance.');
-                await credit(user.id,-stake,'Demo stake');
-                await run('INSERT INTO bets(user_id,round_id,panel,stake) VALUES(?,?,?,?)',user.id,round.id,data.panel,stake);
-              });
+              await autoPlay.placeManual(user,round,data);
             } else if (route === '/api/cashout' && post) {
               await advance();
               if (round.phase !== 'FLYING') fail('Cash out unavailable.');
@@ -281,7 +282,7 @@ const server = http.createServer(async (req,res) => {
                 const b = await one("SELECT * FROM bets WHERE id=? AND user_id=? AND round_id=? AND status='ACTIVE'",Number(data.id),user.id,round.id);
                 if (!b) fail('Bet already settled or missing.');
                 const current = multiplier(); if (current >= round.crash) fail('Round ended.');
-                const payout = Math.floor(b.stake*current);
+                const payout = Math.floor(b.stake*Math.round(current*100)/100);
                 await run("UPDATE bets SET status='WON',payout=?,mult=? WHERE id=?",payout,current,b.id);
                 await credit(user.id,payout,'Demo cash out');
               });
