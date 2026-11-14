@@ -1,9 +1,11 @@
-import { flightPoint, elapsedAt, GameAudio } from '/flight.js?v=20261106-twoplans';
+import { flightPoint, elapsedAt, GameAudio } from '/flight.js?v=20261114-bet-auto';
 
 const $ = (s) => document.querySelector(s);
 const app = $('#app'), modal = $('#modal');
 let me = null, config = {}, state = null, busy = false, refreshing = false;
 let tab = 'ALL', visibleRows = 50, sampleRound = null, sampleRows = [];
+const panelModes={1:'BET',2:'BET'};
+let autoHydrated=false;
 const gameAudio = new GameAudio();
 let flightSnapshot = null, flightReceivedAt = 0, flightFrame = 0, toastTimer;
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -120,15 +122,59 @@ function changePassword(required = false) {
   };
 }
 function panel(n) {
-  return `<section class="betpanel" id="panel${n}"><div><div class="paneltitle">BET ${n}<span>AMOUNT</span></div><div class="stake"><button data-step="-${n}" aria-label="Decrease bet ${n}">−</button><div class="stakevalue"><span class="stakecurrency" aria-hidden="true">₹</span><input id="stake${n}" type="number" min="10" max="25000" step="1" value="10" aria-label="Bet ${n} stake"></div><button data-step="${n}" aria-label="Increase bet ${n}">+</button></div><div class="quick">${[10,100,500,1000].map((v) => `<button data-quick="${n},${v}">${v}</button>`).join('')}</div></div><button class="betaction green" data-bet="${n}" disabled>WAIT…</button></section>`;
+  return `<section class="betpanel" id="panel${n}">
+    <div class="paneltabs" aria-label="Bet ${n} mode"><button class="active" data-panel-mode="${n},BET">Bet</button><button data-panel-mode="${n},AUTO">Auto</button></div>
+    <div><div class="paneltitle">BET ${n}<span>AMOUNT</span></div><div class="stake"><button data-step="-${n}" aria-label="Decrease bet ${n}">−</button><div class="stakevalue"><span class="stakecurrency" aria-hidden="true">₹</span><input id="stake${n}" type="number" min="10" max="25000" step="1" value="10" aria-label="Bet ${n} stake"></div><button data-step="${n}" aria-label="Increase bet ${n}">+</button></div><div class="quick">${[10,100,500,1000].map((v) => `<button data-quick="${n},${v}">${v}</button>`).join('')}</div></div>
+    <button class="betaction green" data-bet="${n}" disabled>WAIT…</button>
+    <div class="autooptions" id="autooptions${n}" hidden>
+      <label class="autocheck"><input type="checkbox" id="cashon${n}" checked>Auto cash out</label>
+      <input id="cashat${n}" type="number" min="1.01" max="49.99" step="0.01" value="2.00" aria-label="Bet ${n} auto cash out multiplier">
+      <label class="autorounds">Auto bet rounds<input id="autorounds${n}" type="number" min="1" max="100" step="1" value="10"></label>
+      <button class="outline" data-autoplay="${n}">START AUTO</button>
+      <small class="autonote">Auto bet continues for the chosen rounds, even if this page closes. Stop Auto or Logout stops future bets.</small>
+    </div>
+    <small class="autostatus" id="autostatus${n}"></small>
+  </section>`;
+}
+function setPanelMode(n,mode) {
+  if(![1,2].includes(n) || !['BET','AUTO'].includes(mode))return;
+  panelModes[n]=mode;
+  const options=$('#autooptions'+n);if(options)options.hidden=mode!=='AUTO';
+  for(const button of document.querySelectorAll(`#panel${n} [data-panel-mode]`))button.classList.toggle('active',button.dataset.panelMode===`${n},${mode}`);
+}
+function autoCashoutValue(n) {
+  if(panelModes[n]!=='AUTO' || !$('#cashon'+n).checked)return 0;
+  const value=Number($('#cashat'+n).value);
+  if(!Number.isFinite(value) || value<1.01 || value>49.99 || Math.abs(value*100-Math.round(value*100))>0.000001)throw new Error('Auto cash out must be 1.01–49.99x, with at most two decimals.');
+  return Math.round(value*100)/100;
+}
+function syncAutoPanel(n,bet) {
+  const plan=(state.autoPlans || []).find(p=>Number(p.panel)===n),running=!!plan?.enabled;
+  const currentActive=bet?.status==='ACTIVE';
+  if(running){
+    $('#stake'+n).value=plan.stake;$('#autorounds'+n).value=plan.remaining;
+    $('#cashon'+n).checked=Number(plan.auto_cashout)>0;
+    if(Number(plan.auto_cashout)>0)$('#cashat'+n).value=Number(plan.auto_cashout).toFixed(2);
+  } else if(currentActive){
+    $('#cashon'+n).checked=Number(bet.auto_cashout)>0;
+    if(Number(bet.auto_cashout)>0)$('#cashat'+n).value=Number(bet.auto_cashout).toFixed(2);
+  }
+  $('#stake'+n).disabled=running;
+  for(const b of document.querySelectorAll(`#panel${n} [data-step],#panel${n} [data-quick]`))b.disabled=running;
+  $('#autorounds'+n).disabled=running;
+  $('#cashon'+n).disabled=running || currentActive;
+  $('#cashat'+n).disabled=running || currentActive || !$('#cashon'+n).checked;
+  const button=$(`[data-autoplay="${n}"]`);
+  button.disabled=false;button.textContent=running ? 'STOP AUTO' : 'START AUTO';button.classList.toggle('wine',running);
+  $('#autostatus'+n).textContent=running ? `AUTO BET ON · ${plan.remaining} rounds left · ${num(plan.stake)}` : plan?.last_error ? 'AUTO STOPPED · '+plan.last_error : currentActive && Number(bet.auto_cashout)>0 ? `AUTO CASH OUT · ${Number(bet.auto_cashout).toFixed(2)}x` : '';
 }
 function closeMenu() {
   if ($('#gamemenu')) $('#gamemenu').hidden = true;
   $('#menutoggle')?.setAttribute('aria-expanded','false');
 }
 function renderGame() {
-  stopFlight(); tab = 'ALL'; visibleRows = 50;
-  app.innerHTML = `<main class="game"><nav class="gamenav"><button class="green" data-request="DEPOSIT">DEPOSIT</button><button class="wine" data-request="WITHDRAWAL">WITHDRAWAL</button><button id="menutoggle" aria-label="Open menu" aria-expanded="false" aria-controls="gamemenu">☰</button><div id="gamemenu" hidden><button data-info="rules">Rules</button><button data-info="bonus">Bonus Information</button><button data-info="promo">Promo Code</button><button data-account>History</button><button data-password>Password</button><button data-support>${whatsappIcon()}24/7 Support</button><button data-logout>Logout</button></div></nav><header class="gamehead">${logo()}<button class="mini outline" data-sound aria-label="Toggle sound" aria-pressed="${gameAudio.enabled}">${gameAudio.enabled ? '🔊' : '🔇'}</button><div class="balance"><b id="balance">${num(me.balance)}</b><small>BALANCE · ${esc(me.username)}</small></div></header><div id="history" class="history"></div><section class="chart"><div class="chartgrid"></div><div class="flightplot"><svg viewBox="0 0 600 250" preserveAspectRatio="none" class="trail" aria-hidden="true"><path id="flighttrail" d="M 70 215"/></svg><img id="flyingplane" src="/plane.svg" alt="Flying airplane"></div><div class="roundstatus"><span id="phase">CONNECTING</span><b id="mult">1.00x</b><small id="roundid"></small></div></section>${panel(1)}${panel(2)}<section class="betssection"><div class="betstabs"><button class="green" data-tab="ALL">ALL BETS</button><button data-tab="MY">MY BETS</button></div><div id="activity" class="activity" hidden></div><div class="tablewrap betslist"><table><thead id="bethead"></thead><tbody id="betrows"></tbody></table></div><button id="morebets" class="morebets" data-more hidden>SHOW MORE</button><p id="listnote" class="listnote"></p></section></main>`;
+  stopFlight(); tab = 'ALL'; visibleRows = 50; autoHydrated=false; panelModes[1]='BET'; panelModes[2]='BET';
+  app.innerHTML = `<main class="game"><nav class="gamenav"><button class="green" data-request="DEPOSIT">DEPOSIT</button><button class="wine" data-request="WITHDRAWAL">WITHDRAWAL</button><button id="menutoggle" aria-label="Open menu" aria-expanded="false" aria-controls="gamemenu">☰</button><div id="gamemenu" hidden><button data-info="rules">Rules</button><button data-info="bonus">Bonus Information</button><button data-info="promo">Promo Code</button><button data-account>History</button><button data-password>Password</button><button data-support>${whatsappIcon()}24/7 Support</button><button data-logout>Logout</button></div></nav><header class="gamehead">${logo()}<button class="mini outline" data-sound aria-label="Toggle sound" aria-pressed="${gameAudio.enabled}">${gameAudio.enabled ? '🔊' : '🔇'}</button><div class="balance"><b id="balance">${num(me.balance)}</b><small>BALANCE · ${esc(me.username)}</small></div></header><div id="history" class="history"></div><section class="chart"><div class="chartgrid"></div><div class="flightplot"><svg viewBox="0 0 600 250" preserveAspectRatio="none" class="trail" aria-hidden="true"><path id="flighttrail" d="M 70 215"/></svg><img id="flyingplane" src="/aviator-plane.png" alt="Flying airplane"></div><div class="roundstatus"><span id="phase">CONNECTING</span><b id="mult">1.00x</b><small id="roundid"></small></div></section>${panel(1)}${panel(2)}<section class="betssection"><div class="betstabs"><button class="green" data-tab="ALL">ALL BETS</button><button data-tab="MY">MY BETS</button></div><div id="activity" class="activity" hidden></div><div class="tablewrap betslist"><table><thead id="bethead"></thead><tbody id="betrows"></tbody></table></div><button id="morebets" class="morebets" data-more hidden>SHOW MORE</button><p id="listnote" class="listnote"></p></section></main>`;
   startFlight();
   $('#menutoggle').onclick = () => {
     const menu = $('#gamemenu'); menu.hidden = !menu.hidden;
@@ -211,7 +257,7 @@ function activityRows() {
   const progress = round.phase === 'WAITING' ? Math.max(0,Math.min(1,1 - round.countdown / 10)) : 1;
   const fake = sampleRows.filter((b) => b.join <= progress).map((b) => {
     const won = b.willCash && round.phase !== 'WAITING' && (round.phase === 'CRASHED' ? b.target < round.mult : b.target <= round.mult);
-    return {...b,status:won ? 'WON' : round.phase === 'CRASHED' ? 'LOST' : 'ACTIVE',mult:won ? b.target : 0,payout:won ? Math.floor(b.stake*b.target) : 0};
+    return {...b,status:won ? 'WON' : round.phase === 'CRASHED' ? 'LOST' : 'ACTIVE',mult:won ? b.target : 0,payout:won ? Math.floor(b.stake*Math.round(b.target*100)/100) : 0};
   });
   const real = state.allBets.map((b,i) => ({...b,simulated:false,key:'user-' + (b.id ?? i),avatarId:b.avatarId ?? seedOf(b.username)}));
   return [...real,...fake].sort((a,b) => b.stake - a.stake || Number(a.simulated) - Number(b.simulated) || String(a.key).localeCompare(String(b.key)));
@@ -252,12 +298,14 @@ async function refresh() {
     $('#roundid').textContent = 'ROUND #' + r.id;
     flightSnapshot = r; flightReceivedAt = performance.now();
     if (!document.hidden) gameAudio.sync(r);
+    if(!autoHydrated){for(const p of state.autoPlans || [])if(p.enabled)setPanelMode(Number(p.panel),'AUTO');autoHydrated=true;}
     for (const n of [1,2]) {
       const b = state.bets.find((v) => Number(v.round_id) === Number(r.id) && Number(v.panel) === n);
       const button = $(`[data-bet="${n}"]`);
       button.classList.toggle('wine',!!b && r.phase === 'FLYING');
       button.disabled = b ? b.status !== 'ACTIVE' || r.phase !== 'FLYING' : r.phase !== 'WAITING';
-      button.innerHTML = b?.status === 'ACTIVE' && r.phase === 'FLYING' ? `CASH OUT<small>${num(Math.floor(b.stake*r.mult))}</small>` : b ? `${b.status === 'ACTIVE' ? 'BET PLACED' : esc(b.status)}<small>${num(b.stake)}</small>` : r.phase === 'WAITING' ? 'BET<small>AMOUNT</small>' : 'NEXT ROUND';
+      button.innerHTML = b?.status === 'ACTIVE' && r.phase === 'FLYING' ? `CASH OUT<small>${num(Math.floor(b.stake*Math.round(r.mult*100)/100))}</small>` : b ? `${b.status === 'ACTIVE' ? 'BET PLACED' : esc(b.status)}<small>${num(b.stake)}</small>` : r.phase === 'WAITING' ? 'BET<small>AMOUNT</small>' : 'NEXT ROUND';
+      syncAutoPanel(n,b);
     }
     renderBets();
   } catch {
@@ -321,14 +369,28 @@ app.addEventListener('click',async (e) => {
     else if (button.hasAttribute('data-sound')) {
       await gameAudio.toggle(); button.textContent = gameAudio.enabled ? '🔊' : '🔇';
       button.setAttribute('aria-pressed',String(gameAudio.enabled)); toast(gameAudio.enabled ? 'Sound ON' : 'Sound OFF');
-      if (gameAudio.enabled) { gameAudio.tone(880,880,0.18,0.08); if (state?.round && !document.hidden) gameAudio.sync(state.round); }
+      if (gameAudio.enabled && state?.round && !document.hidden) gameAudio.sync(state.round);
     } else if (button.hasAttribute('data-support')) support();
     else if (button.hasAttribute('data-logout')) { await api('logout',{}); me = null; state = null; welcome(); }
     else if (button.hasAttribute('data-password')) changePassword();
     else if (button.dataset.request) await request(button.dataset.request);
     else if (button.dataset.info) await info(button.dataset.info);
     else if (button.hasAttribute('data-account')) await account();
-    else if (button.dataset.step) {
+    else if (button.dataset.panelMode) {
+      const [number,mode]=button.dataset.panelMode.split(',');setPanelMode(Number(number),mode);
+    } else if (button.dataset.autoplay && state) {
+      const n=Number(button.dataset.autoplay),plan=(state.autoPlans || []).find(p=>Number(p.panel)===n);
+      busy=true;button.disabled=true;
+      try {
+        if(plan?.enabled){await api('auto/stop',{panel:n});toast('Auto stopped. Already placed bets keep their cashout setting.');}
+        else {
+          const rounds=Number($('#autorounds'+n).value);
+          if(!Number.isSafeInteger(rounds) || rounds<1 || rounds>100)throw new Error('Choose 1–100 auto rounds.');
+          await api('auto/start',{panel:n,amount:Number($('#stake'+n).value),rounds,autoCashout:autoCashoutValue(n)});
+          toast('Auto bet started for the chosen rounds.');
+        }
+      }finally{busy=false;await refresh();}
+    } else if (button.dataset.step) {
       const step = Number(button.dataset.step), input = $('#stake' + Math.abs(step));
       input.value = Math.max(10,Math.min(25000,(Number(input.value) || 10) + (step > 0 ? 10 : -10)));
     } else if (button.dataset.quick) {
@@ -344,7 +406,7 @@ app.addEventListener('click',async (e) => {
       const b = state.bets.find((v) => Number(v.round_id) === Number(state.round.id) && Number(v.panel) === n && v.status === 'ACTIVE');
       try {
         if (b && state.round.phase === 'FLYING') { await api('cashout',{id:b.id}); gameAudio.cashout(); }
-        else { await api('bet',{amount:Number($('#stake'+n).value),panel:n,roundId:state.round.id}); }
+        else { await api('bet',{amount:Number($('#stake'+n).value),panel:n,roundId:state.round.id,autoCashout:autoCashoutValue(n)}); }
       } finally { busy = false; await refresh(); }
     }
   } catch (error) { toast(error.message); }
@@ -361,3 +423,8 @@ async function init() {
 await init();
 setInterval(() => { if (!document.hidden) refresh(); },500);
 document.addEventListener('visibilitychange',() => { if (document.hidden) gameAudio.reset(); else refresh(); });
+
+app.addEventListener('change',e=>{
+  const match=/^cashon([12])$/.exec(e.target.id || '');
+  if(match)$('#cashat'+match[1]).disabled=!e.target.checked;
+});
