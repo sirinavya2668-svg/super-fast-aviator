@@ -1,4 +1,4 @@
-import { flightPoint, elapsedAt } from '/flight.js?v=20261106-twoplans';
+import { flightPoint, elapsedAt } from '/flight.js?v=20261114-bet-auto';
 import { AdminAlerts } from '/admin-alerts.js?v=20261113-mp3-v2';
 
 const $ = (selector) =>
@@ -68,7 +68,7 @@ function adminFlightMarkup() {
     <div class="adminflightgrid"></div>
     <div class="adminflightplot">
       <svg viewBox="0 0 600 250" preserveAspectRatio="none" aria-hidden="true"><path id="adminflighttrail" d="M 70 215"/></svg>
-      <img id="adminflightplane" src="/plane.svg" alt="Live airplane">
+      <img id="adminflightplane" src="/aviator-plane.png" alt="Live airplane">
     </div>
     <div class="adminflightstatus"><small id="adminflightphase">CONNECTING</small><b id="adminflightmult">—</b><small id="adminflightround">LIVE · CUSTOMER ROUND</small></div>
   </section>`;
