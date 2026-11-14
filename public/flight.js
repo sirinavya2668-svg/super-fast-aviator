@@ -7,9 +7,9 @@ export function flightPoint(elapsedMs = 0) {
 
   const t = 1 - Math.exp(-elapsed / 7000);
 
-  const start = { x: 70, y: 215 };
-  const control = { x: 280, y: 195 };
-  const end = { x: 520, y: 45 };
+  const start = { x: 10, y: 238 };
+  const control = { x: 230, y: 232 };
+  const end = { x: 340, y: 120 };
 
   const inverse = 1 - t;
 
