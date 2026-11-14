@@ -26,7 +26,7 @@ function startFlight() {
     const point = flightPoint(elapsedAt(snapshot, flightReceivedAt, performance.now()));
     plane.style.left = `${point.x / 600 * 100}%`;
     plane.style.top = `${point.y / 250 * 100}%`;
-    plane.style.transform = `translate(-50%,-50%) rotate(${point.angle.toFixed(2)}deg)`;
+    plane.style.transform = `rotate(${point.angle.toFixed(2)}deg) translateY(-50%)`;
     plane.classList.toggle('flying', snapshot.phase === 'FLYING');
     plane.classList.toggle('gone', snapshot.phase === 'CRASHED');
     trail.setAttribute('d', snapshot.phase === 'WAITING' ? 'M 70 215' : point.path);
@@ -421,7 +421,7 @@ async function init() {
 }
 await init();
 setInterval(() => { if (!document.hidden) refresh(); },500);
-document.addEventListener('visibilitychange',() => { if (document.hidden) gameAudio.reset(); else refresh(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden) gameAudio.reset(); else refresh(); });
 
 app.addEventListener('change',e=>{
   const match=/^cashon([12])$/.exec(e.target.id || '');
