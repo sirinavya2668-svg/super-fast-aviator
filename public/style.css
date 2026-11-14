@@ -46,6 +46,6 @@ dialog{width:min(92vw,520px);max-height:88svh;overflow:auto;background:#0e1415;c
 .autonote{grid-column:1/-1;font-size:10px;line-height:1.5;color:#a7b5b7}
 .autostatus{grid-column:1/-1;color:var(--green);font-size:11px;line-height:1.4}
 .autostatus:empty{display:none}
-.flightplot #flyingplane{width:clamp(96px,28vw,210px);z-index:1}
+.flightplot #flyingplane{width:clamp(192px,56vw,420px);z-index:1;mix-blend-mode:screen}
 #adminflightplane{width:62px}
 @media(max-width:360px){.autooptions{grid-template-columns:minmax(0,1fr) 96px}.autorounds{gap:5px}.autorounds input{width:52px}.autocheck{font-size:11px}#adminflightplane{width:54px}}
