@@ -1,5 +1,4 @@
-import { flightPoint, elapsedAt, GameAudio } from '/flight.js?v=20261114-bet-auto';
-
+import { flightPoint, elapsedAt, GameAudio } from '/flight.js?v=20261114-crash';
 const $ = (s) => document.querySelector(s);
 const app = $('#app'), modal = $('#modal');
 let me = null, config = {}, state = null, busy = false, refreshing = false;
