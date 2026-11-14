@@ -1,4 +1,5 @@
-import { flightPoint, elapsedAt, GameAudio } from '/flight.js?v=20261114-crash';
+import { flightPoint, elapsedAt, GameAudio } from '/flight.js?v=20261114-final';
+
 const $ = (s) => document.querySelector(s);
 const app = $('#app'), modal = $('#modal');
 let me = null, config = {}, state = null, busy = false, refreshing = false;
@@ -12,6 +13,35 @@ const num = (v) => '₹' + Number(v || 0).toLocaleString('en-IN');
 const count = (v) => Number(v || 0).toLocaleString('en-IN');
 const pct = (k) => esc(config[k] ?? 10);
 
+// The plane picture has empty space around the aircraft, so its real tail is measured
+// from the image itself. The trail then ends exactly on the tail, at any plane size.
+const planeFit = {x:0.2,y:0.55,done:false};
+function measurePlane(img) {
+  planeFit.done = true;
+  try {
+    const w = img.naturalWidth, h = img.naturalHeight;
+    if (!w || !h) { planeFit.done = false; return; }
+    const scale = Math.min(1,300 / w), cw = Math.max(1,Math.round(w * scale)), ch = Math.max(1,Math.round(h * scale));
+    const canvas = document.createElement('canvas'); canvas.width = cw; canvas.height = ch;
+    const g = canvas.getContext('2d',{willReadFrequently:true});
+    g.drawImage(img,0,0,cw,ch);
+    const d = g.getImageData(0,0,cw,ch).data;
+    let minX = cw, maxX = 0, n = 0;
+    for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) {
+      const i = (y * cw + x) * 4;
+      if (d[i + 3] > 100 && d[i] > 140 && d[i + 1] < 110) { n++; if (x < minX) minX = x; if (x > maxX) maxX = x; }
+    }
+    if (n < 50) return;
+    const span = maxX - minX; let sy = 0, c = 0;
+    for (let y = 0; y < ch; y++) for (let x = minX; x <= minX + span * 0.18; x++) {
+      const i = (y * cw + Math.round(x)) * 4;
+      if (d[i + 3] > 100 && d[i] > 140 && d[i + 1] < 110) { sy += y; c++; }
+    }
+    planeFit.x = (minX + span * 0.05) / cw;
+    planeFit.y = c ? (sy / c) / ch : 0.55;
+  } catch { /* Keep the default tail position. */ }
+}
+
 function stopFlight() {
   gameAudio.reset();
   if (flightFrame) cancelAnimationFrame(flightFrame);
@@ -20,16 +50,20 @@ function stopFlight() {
 function startFlight() {
   stopFlight();
   function draw() {
-    const plane = $('#flyingplane'), trail = $('#flighttrail');
+    const plane = $('#flyingplane'), trail = $('#flighttrail'), fill = $('#flightfill');
     if (!plane || !trail) { stopFlight(); return; }
+    if (!planeFit.done && plane.complete && plane.naturalWidth) measurePlane(plane);
     const snapshot = flightSnapshot || {phase:'WAITING',elapsedMs:0};
+    const waiting = snapshot.phase === 'WAITING';
     const point = flightPoint(elapsedAt(snapshot, flightReceivedAt, performance.now()));
     plane.style.left = `${point.x / 600 * 100}%`;
     plane.style.top = `${point.y / 250 * 100}%`;
-    plane.style.transform = `rotate(${point.angle.toFixed(2)}deg) translateY(-50%)`;
+    plane.style.transformOrigin = '0 0';
+    plane.style.transform = `rotate(${(point.angle + 11).toFixed(2)}deg) translate(${(-planeFit.x * 100).toFixed(2)}%,${(-planeFit.y * 100).toFixed(2)}%)`;
     plane.classList.toggle('flying', snapshot.phase === 'FLYING');
     plane.classList.toggle('gone', snapshot.phase === 'CRASHED');
-    trail.setAttribute('d', snapshot.phase === 'WAITING' ? 'M 70 215' : point.path);
+    trail.setAttribute('d', waiting ? 'M 10 228' : point.path);
+    if (fill) fill.setAttribute('d', waiting ? '' : `${point.path} L ${point.x.toFixed(2)} 250 L 10 250 Z`);
     if (document.hidden || performance.now() - flightReceivedAt > 2000) gameAudio.stopEngine();
     flightFrame = requestAnimationFrame(draw);
   }
@@ -173,7 +207,7 @@ function closeMenu() {
 }
 function renderGame() {
   stopFlight(); tab = 'ALL'; visibleRows = 50; autoHydrated=false; panelModes[1]='BET'; panelModes[2]='BET';
-  app.innerHTML = `<main class="game"><nav class="gamenav"><button class="green" data-request="DEPOSIT">DEPOSIT</button><button class="wine" data-request="WITHDRAWAL">WITHDRAWAL</button><button id="menutoggle" aria-label="Open menu" aria-expanded="false" aria-controls="gamemenu">☰</button><div id="gamemenu" hidden><button data-info="rules">Rules</button><button data-info="bonus">Bonus Information</button><button data-info="promo">Promo Code</button><button data-account>History</button><button data-password>Password</button><button data-support>${whatsappIcon()}24/7 Support</button><button data-logout>Logout</button></div></nav><header class="gamehead">${logo()}<button class="mini outline" data-sound aria-label="Toggle sound" aria-pressed="${gameAudio.enabled}">${gameAudio.enabled ? '🔊' : '🔇'}</button><div class="balance"><b id="balance">${num(me.balance)}</b><small>BALANCE · ${esc(me.username)}</small></div></header><div id="history" class="history"></div><section class="chart"><div class="chartgrid"></div><div class="flightplot"><svg viewBox="0 0 600 250" preserveAspectRatio="none" class="trail" aria-hidden="true"><path id="flighttrail" d="M 70 215"/></svg><img id="flyingplane" src="/aviator-plane.png" alt="Flying airplane"></div><div class="roundstatus"><span id="phase">CONNECTING</span><b id="mult">1.00x</b><small id="roundid"></small></div></section>${panel(1)}${panel(2)}<section class="betssection"><div class="betstabs"><button class="green" data-tab="ALL">ALL BETS</button><button data-tab="MY">MY BETS</button></div><div id="activity" class="activity" hidden></div><div class="tablewrap betslist"><table><thead id="bethead"></thead><tbody id="betrows"></tbody></table></div><button id="morebets" class="morebets" data-more hidden>SHOW MORE</button><p id="listnote" class="listnote"></p></section></main>`;
+  app.innerHTML = `<main class="game"><nav class="gamenav"><button class="green" data-request="DEPOSIT">DEPOSIT</button><button class="wine" data-request="WITHDRAWAL">WITHDRAWAL</button><button id="menutoggle" aria-label="Open menu" aria-expanded="false" aria-controls="gamemenu">☰</button><div id="gamemenu" hidden><button data-info="rules">Rules</button><button data-info="bonus">Bonus Information</button><button data-info="promo">Promo Code</button><button data-account>History</button><button data-password>Password</button><button data-support>${whatsappIcon()}24/7 Support</button><button data-logout>Logout</button></div></nav><header class="gamehead">${logo()}<button class="mini outline" data-sound aria-label="Toggle sound" aria-pressed="${gameAudio.enabled}">${gameAudio.enabled ? '🔊' : '🔇'}</button><div class="balance"><b id="balance">${num(me.balance)}</b><small>BALANCE · ${esc(me.username)}</small></div></header><div id="history" class="history"></div><section class="chart"><div class="chartgrid"></div><div class="flightplot"><svg viewBox="0 0 600 250" preserveAspectRatio="none" class="trail" aria-hidden="true"><path id="flightfill" d=""/><path id="flighttrail" d="M 10 228"/></svg><img id="flyingplane" src="/aviator-plane.png" alt="Flying airplane"></div><div class="roundstatus"><span id="phase">CONNECTING</span><b id="mult">1.00x</b><small id="roundid"></small></div></section>${panel(1)}${panel(2)}<section class="betssection"><div class="betstabs"><button class="green" data-tab="ALL">ALL BETS</button><button data-tab="MY">MY BETS</button></div><div id="activity" class="activity" hidden></div><div class="tablewrap betslist"><table><thead id="bethead"></thead><tbody id="betrows"></tbody></table></div><button id="morebets" class="morebets" data-more hidden>SHOW MORE</button><p id="listnote" class="listnote"></p></section></main>`;
   startFlight();
   $('#menutoggle').onclick = () => {
     const menu = $('#gamemenu'); menu.hidden = !menu.hidden;
@@ -421,7 +455,7 @@ async function init() {
 }
 await init();
 setInterval(() => { if (!document.hidden) refresh(); },500);
-document.addEventListener('visibilitychange', () => { if (document.hidden) gameAudio.reset(); else refresh(); });
+document.addEventListener('visibilitychange',() => { if (document.hidden) gameAudio.reset(); else refresh(); });
 
 app.addEventListener('change',e=>{
   const match=/^cashon([12])$/.exec(e.target.id || '');
