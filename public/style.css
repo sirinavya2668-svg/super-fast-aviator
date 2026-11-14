@@ -31,3 +31,21 @@ dialog{width:min(92vw,520px);max-height:88svh;overflow:auto;background:#0e1415;c
 .adminflightstatus>b.crashed{color:#cf6190}
 .adminflightstatus>small:last-child{font-size:9px;font-weight:400;color:#b1c7c7}
 @media(max-width:360px){.adminflight{height:145px}.adminflightstatus>b{font-size:33px}#adminflightplane{width:42px}}
+
+/* Independent Bet / Auto controls for each customer bet panel. */
+.paneltabs{grid-column:1/-1;display:flex;gap:4px;padding:3px;background:#101415;border-radius:24px}
+.paneltabs button{width:50%;padding:7px;border-radius:20px;background:transparent;font-size:14px}
+.paneltabs button.active{background:var(--green)}
+.autooptions{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1fr) 110px;align-items:center;gap:10px;padding-top:10px;border-top:1px solid var(--line)}
+.autooptions input{margin:0;padding:9px;font-size:14px}
+.autocheck{display:flex;align-items:center;gap:8px;font-size:12px}
+.autocheck input{width:auto;accent-color:var(--green)}
+.autorounds{display:flex;align-items:center;gap:8px;font-size:12px}
+.autorounds input{width:65px;min-width:0}
+.autooptions>button{padding:10px 6px;font-size:12px}
+.autonote{grid-column:1/-1;font-size:10px;line-height:1.5;color:#a7b5b7}
+.autostatus{grid-column:1/-1;color:var(--green);font-size:11px;line-height:1.4}
+.autostatus:empty{display:none}
+.flightplot #flyingplane{width:clamp(84px,21vw,132px)}
+#adminflightplane{width:62px}
+@media(max-width:360px){.autooptions{grid-template-columns:minmax(0,1fr) 96px}.autorounds{gap:5px}.autorounds input{width:52px}.autocheck{font-size:11px}#adminflightplane{width:54px}}
