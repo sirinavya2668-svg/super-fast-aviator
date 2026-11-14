@@ -87,14 +87,25 @@ export function elapsedAt(
 }
 
 // Optional sound, enabled by tapping Sound ON.
+// Music loops during waiting/flying. On crash: music stops and rewinds,
+// a separate crash sound plays once. Next round: music restarts from the beginning.
 
 export class GameAudio {
-  constructor(factory=()=>new Audio('/game-music.mp3?v=20261114-track')) {
-    this.factory=factory;this.music=null;this.enabled=false;this.pending=null;this.blocked=false;this.generation=0;
+  constructor(
+    factory=()=>new Audio('/game-music.mp3?v=20261114-track'),
+    crashFactory=()=>new Audio('/crash-sound.mp3?v=20261114-crash')
+  ) {
+    this.factory=factory;this.crashFactory=crashFactory;this.music=null;this.crash=null;
+    this.enabled=false;this.pending=null;this.blocked=false;this.generation=0;
+    this.seen=null;this.crashedRound=null;
   }
   player() {
     if(!this.music){this.music=this.factory();this.music.loop=true;this.music.volume=0.55;this.music.preload='none';}
     return this.music;
+  }
+  crashPlayer() {
+    if(!this.crash){this.crash=this.crashFactory();this.crash.volume=1;this.crash.preload='auto';}
+    return this.crash;
   }
   async toggle() {
     if(this.pending)return this.pending;
@@ -104,23 +115,46 @@ export class GameAudio {
       try {
         await music.play();
         if(generation!==this.generation){music.pause();return false;}
-        this.enabled=true;this.blocked=false;return true;
+        this.enabled=true;this.blocked=false;
+        // Unlock the crash sound on mobile (silent play/pause during this tap).
+        const c=this.crashPlayer();c.muted=true;
+        Promise.resolve(c.play()).then(()=>{c.pause();c.currentTime=0;c.muted=false;}).catch(()=>{c.muted=false;});
+        return true;
       }catch{this.enabled=false;throw new Error('Music could not start. Check game-music.mp3, then tap Sound ON again.');}
       finally{this.pending=null;}
     })();
     return this.pending;
   }
   stopEngine(){this.generation++;this.music?.pause();}
-  reset(){this.stopEngine();if(this.music){try{this.music.currentTime=0;}catch{}}this.blocked=false;}
+  stopMusic(){this.stopEngine();if(this.music){try{this.music.currentTime=0;}catch{}}}
+  reset(){
+    this.stopMusic();
+    if(this.crash){this.crash.pause();try{this.crash.currentTime=0;}catch{}}
+    this.blocked=false;
+  }
   sync(round) {
-    if(!this.enabled || !round || this.blocked || this.pending)return;
+    if(!round)return;
+    const prev=this.seen;this.seen={id:round.id,phase:round.phase};
+    if(!this.enabled || this.blocked || this.pending)return;
+    if(round.phase==='CRASHED'){
+      if(this.crashedRound!==round.id){
+        this.crashedRound=round.id;
+        this.stopMusic();                       // music stops and goes back to start
+        if(prev && prev.id===round.id){         // crash sound plays once
+          const crash=this.crashPlayer();
+          try{crash.currentTime=0;}catch{}
+          Promise.resolve(crash.play()).catch(()=>{});
+        }
+      }
+      return;
+    }
     const music=this.player();
-    if(music.paused){
+    if(music.paused){                           // new round: music from the beginning
       const generation=this.generation;
       try{this.pending=Promise.resolve(music.play()).then(()=>{if(generation!==this.generation)music.pause();}).catch(error=>{if(error?.name!=='AbortError')this.blocked=true;}).finally(()=>{this.pending=null;});}
       catch{this.blocked=true;}
     }
   }
-  tone(){} // No old generated beeps: the supplied recording is the game sound.
+  tone(){} // No old generated beeps: the supplied recordings are the game sounds.
   cashout(){}
 }
